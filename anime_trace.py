@@ -4,7 +4,8 @@ import mimetypes
 from typing import Tuple, Any
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
-from mautrix.types import MessageType, EventID, ContentURI, TextMessageEventContent, MediaMessageEventContent, MessageEventContent, Format, VideoInfo, ThumbnailInfo
+from mautrix.types import (MessageType, EventID, ContentURI, TextMessageEventContent, MediaMessageEventContent,
+                           MessageEventContent, Format, VideoInfo, ThumbnailInfo)
 from time import gmtime
 from time import strftime
 
@@ -58,7 +59,6 @@ class AnimeTraceBot(Plugin):
             await evt.reply(message)
         else:
             await evt.reply("Couldn't find an anime based on the provided screenshot/video.")
-
 
     async def extract_media_url(self, evt: MessageEvent, event_id: EventID, query: Tuple[str, Any]) -> Tuple[str, str, str]:
         media_external_url = ""
@@ -133,7 +133,6 @@ class AnimeTraceBot(Plugin):
         except aiohttp.ClientError as e:
             self.log.error(f"Connection to trace.moe API failed: {e}")
             raise Exception("Connection to trace.moe API failed.") from e
-
 
     async def prepare_message_content(self, data: Any) -> MessageData:
         body = ""
@@ -242,7 +241,7 @@ class AnimeTraceBot(Plugin):
         video_type = None
         video_duration = 0
         image_type = None
-        params = { "size": "l" }
+        params = {"size": "l"}
         if msg_data.video_url:
             try:
                 response = await self.http.get(msg_data.video_url, params=params, raise_for_status=True)
