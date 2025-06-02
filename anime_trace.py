@@ -216,12 +216,12 @@ class AnimeTraceBot(Plugin):
                 )
 
             html += (
-                f"<b><sub>Results from trace.moe</sub></b>"
+                f"<p><b><sub>Results from trace.moe</sub></b></p>"
                 f"</blockquote>"
                 f"</div>"
             )
             body += (
-                f"> >   \n"
+                f"> > \n"
                 f"> > **Results from trace.moe**"
             )
 
