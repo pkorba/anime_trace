@@ -246,7 +246,9 @@ class AnimeTraceBot(Plugin):
             try:
                 response = await self.http.get(msg_data.video_url, params=params, raise_for_status=True)
                 video_type = response.content_type
-                video_duration = int(float(response.headers.get("x-video-duration", 0)))
+                video_start = float(response.headers.get("x-video-start", 0))
+                video_end = float(response.headers.get("x-video-end", 0))
+                video_duration = int((video_end - video_start) * 1000)
                 video = await response.read()
             except aiohttp.ClientError as e:
                 self.log.error(f"Error downloading video preview from API: {e}")
