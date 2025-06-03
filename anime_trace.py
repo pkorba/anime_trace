@@ -147,6 +147,8 @@ class AnimeTraceBot(Plugin):
             image_url = result["image"]
             tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
             tto = strftime("%H:%M:%S", gmtime(result["to"]))
+
+            # Title Romaji
             html = (
                 f"<div>"
                 f"<blockquote>"
@@ -155,42 +157,53 @@ class AnimeTraceBot(Plugin):
                 f"</a>"
             )
             body = (
-                f"> ### {result["anilist"]["title"]["romaji"]} (https://anilist.co/anime/{result["anilist"]["id"]})\n"
+                f"> ### [{result["anilist"]["title"]["romaji"]}](https://anilist.co/anime/{result["anilist"]["id"]})  \n"
                 f"> \n"
             )
 
+            # Title English
             if result["anilist"]["title"]["english"]:
                 html += f"<blockquote><b>English title:</b> {result["anilist"]["title"]["english"]}</blockquote>"
                 body += (
-                    f"> > **English title:** {result["anilist"]["title"]["english"]}\n  "
+                    f"> > **English title:** {result["anilist"]["title"]["english"]}  \n"
                 )
 
+            # AniList, MyAnimeList links
             html += (
                 f"<blockquote>"
                 f"<a href=\"https://anilist.co/anime/{result["anilist"]["id"]}\">AniList</a>, "
                 f"<a href=\"https://myanimelist.net/anime/{result["anilist"]["idMal"]}\">MyAnimeList</a>"
                 f"</blockquote>"
-                f"<blockquote><b>Synonyms:</b> {", ".join(result["anilist"]["synonyms"])}</blockquote>"
+            )
+            body += (
+                f"> > [AniList](https://anilist.co/anime/{result["anilist"]["id"]}), "
+                f"[MyAnimeList](https://myanimelist.net/anime/{result["anilist"]["idMal"]})  \n"
+            )
+
+            # Alternative titles
+            if result["anilist"]["synonyms"]:
+                html += f"<blockquote><b>Alternative titles:</b> {", ".join(result["anilist"]["synonyms"])}</blockquote>"
+                body += f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}  \n"
+
+            # Similarity, filename, episode, time
+            html += (
                 f"<blockquote><b>Similarity:</b> {"{:.2f}".format(result["similarity"] * 100)}%</blockquote>"
                 f"<blockquote><b>Filename:</b> {result["filename"]}</blockquote>"
                 f"<blockquote><b>Episode:</b> {result["episode"] if result["episode"] else "-"}</blockquote>"
                 f"<blockquote><b>Time :</b> {tfrom} - {tto}</blockquote>"
             )
             body += (
-                f"> [AniList](https://anilist.co/anime/{result["anilist"]["id"]}),"
-                f" [MyAnimeList](https://myanimelist.net/anime/{result["anilist"]["idMal"]})\n"
+                f"> > **Similarity:** {"{:.2f}".format(result["similarity"] * 100)}%  \n"
+                f"> > **Filename:** {result["filename"]}  \n"
+                f"> > **Episode:** {result["episode"] if result["episode"] else "-"}  \n"
+                f"> > **Time:** {tfrom} - {tto}  \n"
                 f"> \n"
-                f"> > **Synonyms:** {", ".join(result["anilist"]["synonyms"])}\n"
-                f"> > **Similarity:** {"{:.2f}".format(result["similarity"] * 100)}%\n"
-                f"> > **Filename:** {result["filename"]}\n"
-                f"> > **Episode:** {result["episode"] if result["episode"] else "-"}\n"
-                f"> > **Time:** {tfrom} - {tto}\n"
             )
 
+            # Other results
             if len(data["result"]) > 1:
                 html += f"<p><b>Other results:</b></p>"
-                body += f"> **Other results:**\n"
-
+                body += f"> **Other results:**  \n"
             end = 4 if len(data["result"]) >= 4 else len(data["result"])
             for i in range(1, end):
                 result = data["result"][i]
@@ -212,26 +225,26 @@ class AnimeTraceBot(Plugin):
                     f" ([MAL](https://myanimelist.net/anime/{result["anilist"]["idMal"]}))"
                     f" S: {"{:.2f}".format(result["similarity"] * 100)}%,"
                     f" {(" Ep. " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" T: {tfrom} - {tto}\n"
+                    f" T: {tfrom} - {tto}  \n"
                 )
 
+            # Footer
             html += (
                 f"<p><b><sub>Results from trace.moe</sub></b></p>"
                 f"</blockquote>"
                 f"</div>"
             )
             body += (
-                f"> > \n"
+                f"> \n"
                 f"> > **Results from trace.moe**"
             )
 
-        md = MessageData(
+        return MessageData(
             html=html,
             body=body,
             video_url=video_url,
             image_url=image_url
         )
-        return md
 
     async def prepare_message(self, data: Any) -> MessageEventContent | None:
         msg_data = await self.prepare_message_content(data)
