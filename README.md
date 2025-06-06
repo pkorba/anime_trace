@@ -1,8 +1,8 @@
 # Anime Trace Bot
 
-A maubot for Matrix messaging that allows user to trace back the scene from an anime screenshot using [trace.moe](https://trace.moe/) API. It requires no configuration.
+A maubot for Matrix messaging that allows user to trace back the scene from an anime screenshot using [trace.moe](https://trace.moe/) API.
 
-![bot_anime_trace](https://github.com/user-attachments/assets/951c9295-7990-40c6-9f4c-d55d6ce8ac26)
+![bot_anime_trace](https://github.com/user-attachments/assets/fdecc34e-8304-4d60-9839-01c893341831)
 
 
 ## Usage
@@ -10,12 +10,24 @@ A maubot for Matrix messaging that allows user to trace back the scene from an a
 Do one of the following:  
 1. Reply to a message containing a screenshot/video or an external link to a screenshot/video with a command `[p]trace`.  
 2. Send a single message that contains a screenshot/video as an attachment and a command `[p]trace`.  
-3. Send a single message that contains a link to the screenshot/video and a command `[p]trace link`.  
+3. Send a single message that contains a link to the screenshot/video and a command `[p]trace link`.
 
-If your message contains both an image and a link, then the attachment will be used.
+If your message contains both an image and a link, then the attachment will be used.  
+In order to check the search quota and limit send a message with a command: `[p]trace quota`.
+
+## Configuration
+
+You can configure the plugin in maubot's control panel.
+* `preview_size` - controls the size of video preview and its thumbnail. Available options are:
+  * `l` - large
+  * `m` - medium (default)
+  * `s` - small
+* `api_key` - if you have your own trace.moe API key, you can put it here
+* `mute` - controls whether the video previews have sound. Available options are `yes` and `no` (default)
+* `cut_borders` - trace.moe can detect black borders automatically and cut away unnecessary parts of the images that would affect search results accuracy. This is useful if your image is a screencap from a smartphone or iPad that contains black bars. Available options are `yes` (default) and `no`.
 
 ## Notes
 
-- Current version doesn't support user's API keys. It may be added in future release.
-- Plugin supports images and videos - according to trace.moe API, any format that is supported by ffmpeg
+- Plugin supports images and videos - according to trace.moe docs, any format that is supported by ffmpeg
 - File size limit is 25 MB
+
