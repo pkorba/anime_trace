@@ -387,7 +387,7 @@ class AnimeTraceBot(Plugin):
             "yes": True,
             "no": False
         }
-        return base_mute.get(self.config["mute"], base_mute["yes"])
+        return base_mute.get(self.config["mute"], base_mute["no"])
 
     def get_cut_borders(self) -> bool:
         base_cut_borders = {
