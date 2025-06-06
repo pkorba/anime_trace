@@ -1,11 +1,12 @@
 import aiohttp
 import re
 import mimetypes
-from typing import Tuple, Any
+from typing import Tuple, Any, Type
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
 from mautrix.types import (MessageType, EventID, ContentURI, TextMessageEventContent, MediaMessageEventContent,
                            MessageEventContent, Format, VideoInfo, ThumbnailInfo)
+from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from time import gmtime
 from time import strftime
 
@@ -18,13 +19,27 @@ class MessageData:
         self.image_url: str = image_url
 
 
+class Config(BaseProxyConfig):
+    def do_update(self, helper: ConfigUpdateHelper) -> None:
+        helper.copy("preview_size")
+        helper.copy("api_key")
+        helper.copy("mute")
+        helper.copy("cut_borders")
+
+
 class AnimeTraceBot(Plugin):
     size_limit = 25000000  # 25 MB
-    api_url = "https://api.trace.moe/search?anilistInfo&cutBorders"
+    api_url = "https://api.trace.moe/search?anilistInfo"
+    api_me = "https://api.trace.moe/me"
 
-    @command.new(name="trace", help="Trace back the scene from an anime screenshot", msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO])
+    async def start(self) -> None:
+        await super().start()
+        self.config.load_and_update()
+
+    @command.new(name="trace", help="Trace back the scene from an anime screenshot", require_subcommand=False,
+                 msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO])
     @command.argument("query", pass_raw=True, required=False, matches=r"(https?://\S+)")
-    async def search(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
+    async def trace(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
         await evt.mark_read()
 
         # Get ID of the message user replied to
@@ -33,7 +48,8 @@ class AnimeTraceBot(Plugin):
             await evt.reply("**Usage:**  \n"
                             "In reply to the message that contains a screenshot or link to a screenshot: `!trace`  \n"
                             "In a message that contains a link to a screenshot: `!trace <link>`  \n"
-                            "In a message that contains a screenshot as an attachment: `!trace`")
+                            "In a message that contains a screenshot as an attachment: `!trace`  \n"
+                            "To check the search quota and limit: `!trace quota`")
             return
 
         media_external_url, media_url, content_type = await self.extract_media_url(evt, event_id, query)
@@ -102,11 +118,13 @@ class AnimeTraceBot(Plugin):
             raise Exception(f"External file type not supported: {content_type}")
 
         # Send request as a link
+        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
         params = {
             "url": media_url
         }
+        api_url = f"{AnimeTraceBot.api_url}&cutBorders" if self.get_cut_borders() else AnimeTraceBot.api_url
         try:
-            response = await self.http.get(AnimeTraceBot.api_url, params=params, raise_for_status=True)
+            response = await self.http.get(api_url, headers=headers, params=params, raise_for_status=True)
             response_json = await response.json()
             return response_json
         except aiohttp.ClientError as e:
@@ -115,17 +133,20 @@ class AnimeTraceBot(Plugin):
 
     async def trace_by_media(self, media_url: str, content_type: str) -> str:
         # Send media file to Matrix server first
-        headers = {
-            "Content-Type": content_type
-        }
         try:
             data = await self.client.download_media(ContentURI(media_url))
         except Exception as e:
             self.log.error(f"Media download from Matrix server failed: {e}")
             raise Exception("Media download from Matrix server failed.") from e
 
+        headers = {
+            "Content-Type": content_type
+        }
+        if self.config["api_key"]:
+            headers["x-trace-key"] = self.config["api_key"]
+        api_url = f"{AnimeTraceBot.api_url}&cutBorders" if self.get_cut_borders() else AnimeTraceBot.api_url
         try:
-            response = await self.http.post(AnimeTraceBot.api_url, data=data, headers=headers, raise_for_status=True)
+            response = await self.http.post(api_url, data=data, headers=headers, raise_for_status=True)
             response_json = await response.json()
             return response_json
         except aiohttp.ClientError as e:
@@ -205,7 +226,7 @@ class AnimeTraceBot(Plugin):
                     f"<br><summary><b>Other results:</b></summary>"
                 )
                 body += f"> **Other results:**  \n"
-            end = 4 if len(data["result"]) >= 4 else len(data["result"])
+            end = 5 if len(data["result"]) >= 5 else len(data["result"])
             for i in range(1, end):
                 result = data["result"][i]
                 tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
@@ -256,10 +277,12 @@ class AnimeTraceBot(Plugin):
         video_type = None
         video_duration = 0
         image_type = None
-        params = {"size": "l"}
+        params = {"size": self.get_preview_size()}
+        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
         if msg_data.video_url:
+            msg_data.video_url += "&mute" if self.get_mute() else ""
             try:
-                response = await self.http.get(msg_data.video_url, params=params, raise_for_status=True)
+                response = await self.http.get(msg_data.video_url, headers=headers, params=params, raise_for_status=True)
                 video_type = response.content_type
                 video_start = float(response.headers.get("x-video-start", 0))
                 video_end = float(response.headers.get("x-video-end", 0))
@@ -268,7 +291,7 @@ class AnimeTraceBot(Plugin):
             except aiohttp.ClientError as e:
                 self.log.error(f"Error downloading video preview from API: {e}")
             try:
-                response = await self.http.get(msg_data.image_url, params=params, raise_for_status=True)
+                response = await self.http.get(msg_data.image_url, headers=headers, params=params, raise_for_status=True)
                 image_type = response.content_type
                 image = await response.read()
             except aiohttp.ClientError as e:
@@ -317,3 +340,62 @@ class AnimeTraceBot(Plugin):
                 formatted_body=msg_data.html
             )
         return content
+
+    @trace.subcommand("quota", help="Check the search quota and limit")
+    async def check_quota(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
+        await evt.mark_read()
+        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
+        try:
+            response = await self.http.get(AnimeTraceBot.api_me, headers=headers, raise_for_status=True)
+            response_json = await response.json()
+            body = (
+                f"> ### trace.moe quota  \n"
+                f"> **Priority:** {response_json['priority']}  \n"
+                f"> **Concurrency:** {response_json['concurrency']}  \n"
+                f"> **Quota:** {response_json['quota']}  \n"
+                f"> **Quota used:** {response_json['quotaUsed']}"
+            )
+            html = (
+                f"<blockquote>"
+                f"<h3>trace.moe quota</h3>"
+                f"<b>Priority:</b> {response_json['priority']}"
+                f"<br><b>Concurrency:</b> {response_json['concurrency']}"
+                f"<br><b>Quota:</b> {response_json['quota']}"
+                f"<br><b>Quota used:</b> {response_json['quotaUsed']}"
+                f"</blockquote>"
+            )
+
+            content = TextMessageEventContent(
+                msgtype=MessageType.NOTICE,
+                format=Format.HTML,
+                body=body,
+                formatted_body=html
+            )
+            await evt.reply(content)
+        except aiohttp.ClientError as e:
+            self.log.error(f"Connection to trace.moe API failed: {e}")
+            await evt.reply("Connection to trace.moe API failed")
+
+    def get_preview_size(self) -> str:
+        base_preview_sizes = ["s", "m", "l"]
+        if self.config["preview_size"] in base_preview_sizes:
+            return self.config["preview_size"]
+        return "m"
+
+    def get_mute(self) -> bool:
+        base_mute = {
+            "yes": True,
+            "no": False
+        }
+        return base_mute.get(self.config["mute"], base_mute["yes"])
+
+    def get_cut_borders(self) -> bool:
+        base_cut_borders = {
+            "yes": True,
+            "no": False
+        }
+        return base_cut_borders.get(self.config["cut_borders"], base_cut_borders["yes"])
+
+    @classmethod
+    def get_config_class(cls) -> Type[BaseProxyConfig]:
+        return Config

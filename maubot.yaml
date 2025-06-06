@@ -1,7 +1,10 @@
 maubot: 0.1.0
 id: com.github.pkorba.anime_trace
-version: 1.0.0
+version: 1.1.0
 license: MIT
 modules:
   - anime_trace
 main_class: AnimeTraceBot
+config: true
+extra-files:
+  - base-config.yaml
