@@ -202,7 +202,7 @@ class AnimeTraceBot(Plugin):
             if len(data["result"]) > 1:
                 html += (
                     f"<details>"
-                    f"<summary><p><b>Other results:</b></p></summary>"
+                    f"<br><summary><b>Other results:</b></summary>"
                 )
                 body += f"> **Other results:**  \n"
             end = 4 if len(data["result"]) >= 4 else len(data["result"])
