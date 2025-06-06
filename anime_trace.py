@@ -38,8 +38,6 @@ class AnimeTraceBot(Plugin):
 
         media_external_url, media_url, content_type = await self.extract_media_url(evt, event_id, query)
 
-        await evt.respond("Tracing anime...")
-
         trace_json = None
         if media_external_url:
             try:
@@ -202,7 +200,10 @@ class AnimeTraceBot(Plugin):
 
             # Other results
             if len(data["result"]) > 1:
-                html += f"<p><b>Other results:</b></p>"
+                html += (
+                    f"<details>"
+                    f"<summary><p><b>Other results:</b></p></summary>"
+                )
                 body += f"> **Other results:**  \n"
             end = 4 if len(data["result"]) >= 4 else len(data["result"])
             for i in range(1, end):
@@ -230,6 +231,7 @@ class AnimeTraceBot(Plugin):
 
             # Footer
             html += (
+                f"</details>"
                 f"<p><b><sub>Results from trace.moe</sub></b></p>"
                 f"</blockquote>"
                 f"</div>"
