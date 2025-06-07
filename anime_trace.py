@@ -358,11 +358,11 @@ class AnimeTraceBot(Plugin):
             html = (
                 f"<blockquote>"
                 f"<h3>trace.moe quota</h3>"
-                f"<b>Priority:</b> {response_json['priority']}"
+                f"<p><b>Priority:</b> {response_json['priority']}"
                 f"<br><b>Concurrency:</b> {response_json['concurrency']}"
                 f"<br><b>Quota:</b> {response_json['quota']}"
                 f"<br><b>Quota used:</b> {response_json['quotaUsed']}"
-                f"</blockquote>"
+                f"</p></blockquote>"
             )
 
             content = TextMessageEventContent(
