@@ -25,6 +25,7 @@ You can configure the plugin in maubot's control panel.
 * `api_key` - if you have your own trace.moe API key, you can put it here
 * `mute` - controls whether the video previews have sound. Available options are `yes` and `no` (default)
 * `cut_borders` - trace.moe can detect black borders automatically and cut away unnecessary parts of the images that would affect search results accuracy. This is useful if your image is a screencap from a smartphone or iPad that contains black bars. Available options are `yes` (default) and `no`.
+* `max_results` - controls the number of displayed results (defaults to 5)
 
 ## Notes
 
