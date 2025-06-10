@@ -36,7 +36,7 @@ class AnimeTraceBot(Plugin):
     api_url = "https://api.trace.moe/search?anilistInfo"
     api_me = "https://api.trace.moe/me"
     headers = {
-        "User-Agent": "AnimeTraceBot/1.2.0"
+        "User-Agent": "AnimeTraceBot/1.2.1"
    }
 
     async def start(self) -> None:
