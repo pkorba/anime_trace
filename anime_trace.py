@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import re
 import mimetypes
@@ -108,6 +109,20 @@ class AnimeTraceBot(Plugin):
         return media_external_url, media_url, content_type
 
     async def trace_by_external_url(self, media_url: str) -> Any:
+        await self.validate_external_url(media_url)
+        # Send request as a link
+        params = {
+            "url": media_url
+        }
+        try:
+            response = await self.http.get(self.api_url, headers=self.headers, params=params, raise_for_status=True)
+            response_json = await response.json()
+            return response_json
+        except aiohttp.ClientError as e:
+            self.log.error(f"Connection to trace.moe API failed: {e}")
+            raise Exception("Connection to trace.moe API failed.") from e
+
+    async def validate_external_url(self, media_url: str) -> None:
         # Check the headers for size and type
         try:
             response = await self.http.head(media_url, raise_for_status=True)
@@ -125,18 +140,6 @@ class AnimeTraceBot(Plugin):
             self.log.error(f"External file type not supported: {content_type}")
             raise Exception(f"External file type not supported: {content_type}")
 
-        # Send request as a link
-        params = {
-            "url": media_url
-        }
-        try:
-            response = await self.http.get(self.api_url, headers=self.headers, params=params, raise_for_status=True)
-            response_json = await response.json()
-            return response_json
-        except aiohttp.ClientError as e:
-            self.log.error(f"Connection to trace.moe API failed: {e}")
-            raise Exception("Connection to trace.moe API failed.") from e
-
     async def trace_by_media(self, media_url: str, content_type: str) -> str:
         # Download media file from Matrix server first
         try:
@@ -145,6 +148,7 @@ class AnimeTraceBot(Plugin):
             self.log.error(f"Media download from Matrix server failed: {e}")
             raise Exception("Media download from Matrix server failed.") from e
 
+        # Send media file to trace.moe
         headers = self.headers.copy()
         headers["Content-Type"] = content_type
         try:
@@ -280,6 +284,7 @@ class AnimeTraceBot(Plugin):
         video_type = None
         video_duration = 0
         image_type = None
+        # Download preview data
         params = {
             "size": self.get_preview_size()
         }
@@ -302,13 +307,12 @@ class AnimeTraceBot(Plugin):
             except aiohttp.ClientError as e:
                 self.log.error(f"Error downloading video thumbnail from API: {e}")
 
-        if video:
-            height = 360
+        # Prepare message content
+        if video and image:
             width = 640
+            height = 360
             try:
-                img = Image.open(io.BytesIO(image))
-                height = img.height
-                width = img.width
+                width, height = await asyncio.get_event_loop().run_in_executor(None, self.get_image_dimensions, image)
             except Exception as e:
                 self.log.error(f"Error reading image dimensions: {e}")
             try:
@@ -421,6 +425,10 @@ class AnimeTraceBot(Plugin):
             self.log.error("Incorrect 'max_results' config value. Setting default value of 5.")
             max_results = 5
         return max_results
+
+    def get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
+        img = Image.open(io.BytesIO(image))
+        return img.width, img.height
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
