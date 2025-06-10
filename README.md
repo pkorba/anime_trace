@@ -31,3 +31,6 @@ You can configure the plugin in maubot's control panel.
 - Plugin supports images and videos - according to trace.moe docs, any format that is supported by ffmpeg
 - File size limit is 25 MB
 
+## Disclaimer
+
+This plugin is unofficial and is not affiliated with trace.moe. It is not intended for any purpose that violates trace.moe Terms of Service. By using this plugin, you acknowledge that you will not use it in a way that infringes on trace.moe terms. The official trace.moe website can be found at https://trace.moe/.

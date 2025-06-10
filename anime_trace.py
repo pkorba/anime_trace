@@ -1,6 +1,7 @@
 import aiohttp
 import re
 import mimetypes
+import io
 from typing import Tuple, Any, Type
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
@@ -9,6 +10,7 @@ from mautrix.types import (MessageType, EventID, ContentURI, TextMessageEventCon
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from time import gmtime
 from time import strftime
+from PIL import Image
 
 
 class MessageData:
@@ -25,18 +27,26 @@ class Config(BaseProxyConfig):
         helper.copy("api_key")
         helper.copy("mute")
         helper.copy("cut_borders")
+        helper.copy("max_results")
 
 
 class AnimeTraceBot(Plugin):
     size_limit = 25000000  # 25 MB
     api_url = "https://api.trace.moe/search?anilistInfo"
     api_me = "https://api.trace.moe/me"
+    headers = {
+        "User-Agent": "AnimeTraceBot/1.2.0"
+   }
 
     async def start(self) -> None:
         await super().start()
         self.config.load_and_update()
+        if self.get_cut_borders():
+            self.api_url += "&cutBorders"
+        if self.config.get("api_key", ""):
+            self.headers["x-trace-key"] = self.config["api_key"]
 
-    @command.new(name="trace", help="Trace back the scene from an anime screenshot", require_subcommand=False,
+    @command.new(name="trace", help="Trace back the scene from an anime screenshot", require_subcommand=False, arg_fallthrough=False,
                  msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO])
     @command.argument("query", pass_raw=True, required=False, matches=r"(https?://\S+)")
     async def trace(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
@@ -54,7 +64,6 @@ class AnimeTraceBot(Plugin):
 
         media_external_url, media_url, content_type = await self.extract_media_url(evt, event_id, query)
 
-        trace_json = None
         if media_external_url:
             try:
                 trace_json = await self.trace_by_external_url(media_external_url)
@@ -99,18 +108,17 @@ class AnimeTraceBot(Plugin):
         return media_external_url, media_url, content_type
 
     async def trace_by_external_url(self, media_url: str) -> Any:
-        content_length = 0
-        content_type = ""
         # Check the headers for size and type
         try:
             response = await self.http.head(media_url, raise_for_status=True)
             content_type = response.content_type
             content_length = response.content_length
         except aiohttp.ClientError as e:
-            self.log.error(f"Connection failed during image download from external URL: {e}")
+            self.log.error(f"Connection failed during checks of image from external URL: {e}")
+            raise Exception("Could not validate file from external URL") from e
 
         # Verify if content conforms trace.moe requirements
-        if content_length > AnimeTraceBot.size_limit:
+        if content_length > self.size_limit:
             self.log.error(f"External image size too big: {content_length}")
             raise Exception(f"External image size too big: {content_length} bytes")
         if not content_type.startswith("image/") and not content_type.startswith("video/"):
@@ -118,13 +126,11 @@ class AnimeTraceBot(Plugin):
             raise Exception(f"External file type not supported: {content_type}")
 
         # Send request as a link
-        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
         params = {
             "url": media_url
         }
-        api_url = f"{AnimeTraceBot.api_url}&cutBorders" if self.get_cut_borders() else AnimeTraceBot.api_url
         try:
-            response = await self.http.get(api_url, headers=headers, params=params, raise_for_status=True)
+            response = await self.http.get(self.api_url, headers=self.headers, params=params, raise_for_status=True)
             response_json = await response.json()
             return response_json
         except aiohttp.ClientError as e:
@@ -132,21 +138,17 @@ class AnimeTraceBot(Plugin):
             raise Exception("Connection to trace.moe API failed.") from e
 
     async def trace_by_media(self, media_url: str, content_type: str) -> str:
-        # Send media file to Matrix server first
+        # Download media file from Matrix server first
         try:
             data = await self.client.download_media(ContentURI(media_url))
         except Exception as e:
             self.log.error(f"Media download from Matrix server failed: {e}")
             raise Exception("Media download from Matrix server failed.") from e
 
-        headers = {
-            "Content-Type": content_type
-        }
-        if self.config["api_key"]:
-            headers["x-trace-key"] = self.config["api_key"]
-        api_url = f"{AnimeTraceBot.api_url}&cutBorders" if self.get_cut_borders() else AnimeTraceBot.api_url
+        headers = self.headers.copy()
+        headers["Content-Type"] = content_type
         try:
-            response = await self.http.post(api_url, data=data, headers=headers, raise_for_status=True)
+            response = await self.http.post(self.api_url, data=data, headers=headers, raise_for_status=True)
             response_json = await response.json()
             return response_json
         except aiohttp.ClientError as e:
@@ -220,13 +222,14 @@ class AnimeTraceBot(Plugin):
             )
 
             # Other results
-            if len(data["result"]) > 1:
+            max_results = self.get_max_results()
+            if len(data["result"]) > 1 and max_results > 1:
                 html += (
                     f"<details>"
                     f"<br><summary><b>Other results:</b></summary>"
                 )
                 body += f"> **Other results:**  \n"
-            end = 5 if len(data["result"]) >= 5 else len(data["result"])
+            end = max_results if len(data["result"]) >= max_results else len(data["result"])
             for i in range(1, end):
                 result = data["result"][i]
                 tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
@@ -236,18 +239,18 @@ class AnimeTraceBot(Plugin):
                     f"{i}. <a href=\"https://anilist.co/anime/{result["anilist"]["id"]}\">"
                     f"{result["anilist"]["title"]["english"] if result["anilist"]["title"]["english"] else result["anilist"]["title"]["romaji"]}</a>"
                     f" (<a href=\"https://myanimelist.net/anime/{result["anilist"]["idMal"]}\">MAL</a>)"
-                    f" S: {"{:.2f}".format(result["similarity"] * 100)}%,"
-                    f"{(" Ep. " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" T: {tfrom} - {tto}"
+                    f" <b>S:</b> {"{:.2f}".format(result["similarity"] * 100)}%,"
+                    f"{(" <b>Ep:</b> " + str(result["episode"]) + ",") if result["episode"] else ""}"
+                    f" <b>T:</b> {tfrom} - {tto}"
                     f"</blockquote>"
                 )
                 body += (
                     f"> > {i}. [{result["anilist"]["title"]["english"] if result["anilist"]["title"]["english"] else result["anilist"]["title"]["romaji"]}]"
                     f"(https://anilist.co/anime/{result["anilist"]["id"]})"
                     f" ([MAL](https://myanimelist.net/anime/{result["anilist"]["idMal"]}))"
-                    f" S: {"{:.2f}".format(result["similarity"] * 100)}%,"
-                    f" {(" Ep. " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" T: {tfrom} - {tto}  \n"
+                    f" **S:** {"{:.2f}".format(result["similarity"] * 100)}%,"
+                    f" {(" **Ep:** " + str(result["episode"]) + ",") if result["episode"] else ""}"
+                    f" **T:** {tfrom} - {tto}  \n"
                 )
 
             # Footer
@@ -277,12 +280,14 @@ class AnimeTraceBot(Plugin):
         video_type = None
         video_duration = 0
         image_type = None
-        params = {"size": self.get_preview_size()}
-        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
+        params = {
+            "size": self.get_preview_size()
+        }
         if msg_data.video_url:
-            msg_data.video_url += "&mute" if self.get_mute() else ""
+            if self.get_mute():
+                msg_data.video_url += "&mute"
             try:
-                response = await self.http.get(msg_data.video_url, headers=headers, params=params, raise_for_status=True)
+                response = await self.http.get(msg_data.video_url, headers=self.headers, params=params, raise_for_status=True)
                 video_type = response.content_type
                 video_start = float(response.headers.get("x-video-start", 0))
                 video_end = float(response.headers.get("x-video-end", 0))
@@ -291,13 +296,21 @@ class AnimeTraceBot(Plugin):
             except aiohttp.ClientError as e:
                 self.log.error(f"Error downloading video preview from API: {e}")
             try:
-                response = await self.http.get(msg_data.image_url, headers=headers, params=params, raise_for_status=True)
+                response = await self.http.get(msg_data.image_url, headers=self.headers, params=params, raise_for_status=True)
                 image_type = response.content_type
                 image = await response.read()
             except aiohttp.ClientError as e:
                 self.log.error(f"Error downloading video thumbnail from API: {e}")
 
         if video:
+            height = 360
+            width = 640
+            try:
+                img = Image.open(io.BytesIO(image))
+                height = img.height
+                width = img.width
+            except Exception as e:
+                self.log.error(f"Error reading image dimensions: {e}")
             try:
                 video_extension = mimetypes.guess_extension(video_type)
                 image_extension = mimetypes.guess_extension(image_type)
@@ -323,10 +336,14 @@ class AnimeTraceBot(Plugin):
                         mimetype=video_type,
                         size=len(video),
                         duration=video_duration,
+                        height=height,
+                        width=width,
                         thumbnail_url=image_uri,
                         thumbnail_info=ThumbnailInfo(
                             mimetype=image_type,
-                            size=len(image)
+                            size=len(image),
+                            height=height,
+                            width=width
                         )
                     )
                 )
@@ -342,11 +359,10 @@ class AnimeTraceBot(Plugin):
         return content
 
     @trace.subcommand("quota", help="Check the search quota and limit")
-    async def check_quota(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
+    async def check_quota(self, evt: MessageEvent) -> None:
         await evt.mark_read()
-        headers = {"x-trace-key": self.config["api_key"]} if self.config["api_key"] else {}
         try:
-            response = await self.http.get(AnimeTraceBot.api_me, headers=headers, raise_for_status=True)
+            response = await self.http.get(self.api_me, headers=self.headers, raise_for_status=True)
             response_json = await response.json()
             body = (
                 f"> ### trace.moe quota  \n"
@@ -378,8 +394,9 @@ class AnimeTraceBot(Plugin):
 
     def get_preview_size(self) -> str:
         base_preview_sizes = ["s", "m", "l"]
-        if self.config["preview_size"] in base_preview_sizes:
-            return self.config["preview_size"]
+        size = self.config.get("preview_size", "m")
+        if size in base_preview_sizes:
+            return size
         return "m"
 
     def get_mute(self) -> bool:
@@ -387,14 +404,23 @@ class AnimeTraceBot(Plugin):
             "yes": True,
             "no": False
         }
-        return base_mute.get(self.config["mute"], base_mute["no"])
+        return base_mute.get(self.config.get("mute", "no"), base_mute["no"])
 
     def get_cut_borders(self) -> bool:
         base_cut_borders = {
             "yes": True,
             "no": False
         }
-        return base_cut_borders.get(self.config["cut_borders"], base_cut_borders["yes"])
+        return base_cut_borders.get(self.config.get("cut_borders", "yes"), base_cut_borders["yes"])
+
+    def get_max_results(self) -> int:
+        try:
+            max_results = int(self.config.get("max_results", 5))
+            max_results = 1 if max_results < 1 else max_results
+        except ValueError:
+            self.log.error("Incorrect 'max_results' config value. Setting default value of 5.")
+            max_results = 5
+        return max_results
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:

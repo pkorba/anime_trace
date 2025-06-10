@@ -2,3 +2,4 @@ preview_size: "m"
 api_key: ""
 mute: "no"
 cut_borders: "yes"
+max_results: 5
