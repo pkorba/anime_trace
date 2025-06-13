@@ -470,7 +470,7 @@ class AnimeTraceBot(Plugin):
         """
         try:
             max_results = int(self.config.get("max_results", 5))
-            max_results = 1 if max_results < 1 else max_results
+            max_results = max(1, max_results)
         except ValueError:
             self.log.error("Incorrect 'max_results' config value. Setting default value of 5.")
             max_results = 5
