@@ -476,7 +476,8 @@ class AnimeTraceBot(Plugin):
             max_results = 5
         return max_results
 
-    def get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
+    @staticmethod
+    def get_image_dimensions(image: bytes) -> Tuple[int, int]:
         """
         Examine image dimensions
         :param image: image data as bytes
