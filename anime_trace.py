@@ -36,7 +36,7 @@ class AnimeTraceBot(Plugin):
     api_url = "https://api.trace.moe/search?anilistInfo"
     api_me = "https://api.trace.moe/me"
     headers = {
-        "User-Agent": "AnimeTraceBot/1.2.1"
+        "User-Agent": "AnimeTraceBot/1.2.2"
    }
 
     async def start(self) -> None:
@@ -85,6 +85,14 @@ class AnimeTraceBot(Plugin):
             await evt.reply("Couldn't find an anime based on the provided screenshot/video.")
 
     async def extract_media_url(self, evt: MessageEvent, event_id: EventID, query: Tuple[str, Any]) -> Tuple[str, str, str]:
+        """
+        Extracts the image from matrix message
+        :param evt: user's message
+        :param event_id: ID of the message user replied to
+        :param query: user's message content
+        :return: external image URL if user requested to analyze a link, and two empty strings;
+            empty string, matrix content URL and content type of matrix URL if user requested to analyze an attachment
+        """
         media_external_url = ""
         media_url = ""
         content_type = ""
@@ -109,6 +117,11 @@ class AnimeTraceBot(Plugin):
         return media_external_url, media_url, content_type
 
     async def trace_by_external_url(self, media_url: str) -> Any:
+        """
+        Query the API with external image URL
+        :param media_url: external image URL
+        :return: API response
+        """
         await self.validate_external_url(media_url)
         # Send request as a link
         params = {
@@ -123,6 +136,11 @@ class AnimeTraceBot(Plugin):
             raise Exception("Connection to trace.moe API failed.") from e
 
     async def validate_external_url(self, media_url: str) -> None:
+        """
+        Validate the external image URL. Checks size limit and content type.
+        :param media_url: external image URL
+        :raises Exception: if the size of an image is too big or content type is not of image or video types
+        """
         # Check the headers for size and type
         try:
             response = await self.http.head(media_url, raise_for_status=True)
@@ -141,6 +159,12 @@ class AnimeTraceBot(Plugin):
             raise Exception(f"External file type not supported: {content_type}")
 
     async def trace_by_media(self, media_url: str, content_type: str) -> str:
+        """
+        Query the API with internal matrix image URL
+        :param media_url: image URL
+        :param content_type: image type
+        :return: API response
+        """
         # Download media file from Matrix server first
         try:
             data = await self.client.download_media(ContentURI(media_url))
@@ -160,6 +184,11 @@ class AnimeTraceBot(Plugin):
             raise Exception("Connection to trace.moe API failed.") from e
 
     async def prepare_message_content(self, data: Any) -> MessageData:
+        """
+        Prepare the message content
+        :param data: JSON API response
+        :return: message data to be embedded in the final message
+        """
         body = ""
         html = ""
         video_url = ""
@@ -233,7 +262,7 @@ class AnimeTraceBot(Plugin):
                     f"<br><summary><b>Other results:</b></summary>"
                 )
                 body += f"> **Other results:**  \n"
-            end = max_results if len(data["result"]) >= max_results else len(data["result"])
+            end = min(max_results, len(data["result"]))
             for i in range(1, end):
                 result = data["result"][i]
                 tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
@@ -277,6 +306,11 @@ class AnimeTraceBot(Plugin):
         )
 
     async def prepare_message(self, data: Any) -> MessageEventContent | None:
+        """
+        Prepares the final message for the user
+        :param data: JSON API response
+        :return: message ready to be sent to the user
+        """
         msg_data = await self.prepare_message_content(data)
         content = None
         video = None
@@ -397,6 +431,10 @@ class AnimeTraceBot(Plugin):
             await evt.reply("Connection to trace.moe API failed")
 
     def get_preview_size(self) -> str:
+        """
+        Get the preview size of the image from configuration
+        :return: preview size parameter
+        """
         base_preview_sizes = ["s", "m", "l"]
         size = self.config.get("preview_size", "m")
         if size in base_preview_sizes:
@@ -404,6 +442,10 @@ class AnimeTraceBot(Plugin):
         return "m"
 
     def get_mute(self) -> bool:
+        """
+        Get the mute status of preview video from configuration
+        :return: mute status
+        """
         base_mute = {
             "yes": True,
             "no": False
@@ -411,6 +453,10 @@ class AnimeTraceBot(Plugin):
         return base_mute.get(self.config.get("mute", "no"), base_mute["no"])
 
     def get_cut_borders(self) -> bool:
+        """
+        Get information from configuration whether to cut borders of image sent to API
+        :return: cut borders status
+        """
         base_cut_borders = {
             "yes": True,
             "no": False
@@ -418,6 +464,10 @@ class AnimeTraceBot(Plugin):
         return base_cut_borders.get(self.config.get("cut_borders", "yes"), base_cut_borders["yes"])
 
     def get_max_results(self) -> int:
+        """
+        Get the maximum number of results from configuration
+        :return: maximum results number
+        """
         try:
             max_results = int(self.config.get("max_results", 5))
             max_results = 1 if max_results < 1 else max_results
@@ -427,6 +477,11 @@ class AnimeTraceBot(Plugin):
         return max_results
 
     def get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
+        """
+        Examine image dimensions
+        :param image: image data as bytes
+        :return: Tuple with image width and height
+        """
         img = Image.open(io.BytesIO(image))
         return img.width, img.height
 
