@@ -214,17 +214,12 @@ class AnimeTraceBot(Plugin):
                 f"<h3>{result["anilist"]["title"]["romaji"]}</h3>"
                 f"</a>"
             )
-            body = (
-                f"> ### [{result["anilist"]["title"]["romaji"]}](https://anilist.co/anime/{result["anilist"]["id"]})  \n"
-                f"> \n"
-            )
+            body = f"> ### [{result["anilist"]["title"]["romaji"]}](https://anilist.co/anime/{result["anilist"]["id"]})  \n>  \n"
 
             # Title English
             if result["anilist"]["title"]["english"]:
                 html += f"<blockquote><b>English title:</b> {result["anilist"]["title"]["english"]}</blockquote>"
-                body += (
-                    f"> > **English title:** {result["anilist"]["title"]["english"]}  \n"
-                )
+                body += f"> > **English title:** {result["anilist"]["title"]["english"]}  \n>  \n"
 
             # AniList, MyAnimeList links
             html += (
@@ -235,13 +230,13 @@ class AnimeTraceBot(Plugin):
             )
             body += (
                 f"> > [AniList](https://anilist.co/anime/{result["anilist"]["id"]}), "
-                f"[MyAnimeList](https://myanimelist.net/anime/{result["anilist"]["idMal"]})  \n"
+                f"[MyAnimeList](https://myanimelist.net/anime/{result["anilist"]["idMal"]})  \n>  \n"
             )
 
             # Alternative titles
             if result["anilist"]["synonyms"]:
                 html += f"<blockquote><b>Alternative titles:</b> {", ".join(result["anilist"]["synonyms"])}</blockquote>"
-                body += f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}  \n"
+                body += f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}  \n>  \n"
 
             # Similarity, filename, episode, time
             html += (
@@ -251,11 +246,10 @@ class AnimeTraceBot(Plugin):
                 f"<blockquote><b>Time :</b> {tfrom} - {tto}</blockquote>"
             )
             body += (
-                f"> > **Similarity:** {"{:.2f}".format(result["similarity"] * 100)}%  \n"
-                f"> > **Filename:** {result["filename"]}  \n"
-                f"> > **Episode:** {result["episode"] if result["episode"] else "-"}  \n"
-                f"> > **Time:** {tfrom} - {tto}  \n"
-                f"> \n"
+                f"> > **Similarity:** {"{:.2f}".format(result["similarity"] * 100)}%  \n>  \n"
+                f"> > **Filename:** {result["filename"]}  \n>  \n"
+                f"> > **Episode:** {result["episode"] if result["episode"] else "-"}  \n>  \n"
+                f"> > **Time:** {tfrom} - {tto}  \n>  \n"
             )
 
             # Other results
@@ -287,7 +281,7 @@ class AnimeTraceBot(Plugin):
                     f" ([MAL](https://myanimelist.net/anime/{result["anilist"]["idMal"]}))"
                     f" **S:** {"{:.2f}".format(result["similarity"] * 100)}%,"
                     f" {(" **Ep:** " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" **T:** {tfrom} - {tto}  \n"
+                    f" **T:** {tfrom} - {tto}  \n>  \n"
                 )
 
             # Footer
@@ -297,10 +291,7 @@ class AnimeTraceBot(Plugin):
                 f"</blockquote>"
                 f"</div>"
             )
-            body += (
-                f"> \n"
-                f"> > **Results from trace.moe**"
-            )
+            body += f"> **Results from trace.moe**"
 
         return MessageData(
             html=html,

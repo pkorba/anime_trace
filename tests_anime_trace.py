@@ -493,5 +493,6 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(width, 5)
         self.assertEqual(height, 10)
 
+
 if __name__ == '__main__':
     unittest.main()
