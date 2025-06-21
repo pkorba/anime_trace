@@ -2,8 +2,7 @@
 
 A maubot for Matrix messaging that allows user to trace back the scene from an anime screenshot using [trace.moe](https://trace.moe/) API.
 
-![bot_anime_trace](https://github.com/user-attachments/assets/fdecc34e-8304-4d60-9839-01c893341831)
-
+![bot_anime_trace](https://github.com/user-attachments/assets/1159941f-d29a-49f5-a5d4-34ed797d7733)
 
 ## Usage
 
