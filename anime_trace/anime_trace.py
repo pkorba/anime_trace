@@ -1,25 +1,18 @@
-import asyncio
 import aiohttp
-import re
-import mimetypes
+import asyncio
 import io
-from typing import Tuple, Any, Type
+import mimetypes
+import re
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
 from mautrix.types import (MessageType, EventID, ContentURI, TextMessageEventContent, MediaMessageEventContent,
                            MessageEventContent, Format, VideoInfo, ThumbnailInfo)
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
+from PIL import Image
+from .resources.datastructures import MessageData
 from time import gmtime
 from time import strftime
-from PIL import Image
-
-
-class MessageData:
-    def __init__(self, html: str, body: str, video_url: str, image_url: str):
-        self.html: str = html
-        self.body: str = body
-        self.video_url: str = video_url
-        self.image_url: str = image_url
+from typing import Tuple, Any, Type
 
 
 class Config(BaseProxyConfig):
@@ -36,8 +29,8 @@ class AnimeTraceBot(Plugin):
     api_url = "https://api.trace.moe/search?anilistInfo"
     api_me = "https://api.trace.moe/me"
     headers = {
-        "User-Agent": "AnimeTraceBot/1.2.2"
-   }
+        "User-Agent": "AnimeTraceBot/1.2.3"
+    }
 
     async def start(self) -> None:
         await super().start()
@@ -56,33 +49,38 @@ class AnimeTraceBot(Plugin):
         # Get ID of the message user replied to
         event_id = evt.content.get_reply_to()
         if not event_id and not query and evt.content.msgtype == MessageType.TEXT:
-            await evt.reply("**Usage:**  \n"
-                            "In reply to the message that contains a screenshot or link to a screenshot: `!trace`  \n"
-                            "In a message that contains a link to a screenshot: `!trace <link>`  \n"
-                            "In a message that contains a screenshot as an attachment: `!trace`  \n"
-                            "To check the search quota and limit: `!trace quota`")
+            await evt.reply("> **Usage:**  \n"
+                            "> In reply to the message that contains a screenshot or link to a screenshot: `!trace`  \n"
+                            "> In a message that contains a link to a screenshot: `!trace <link>`  \n"
+                            "> In a message that contains a screenshot as an attachment: `!trace`  \n"
+                            "> To check the search quota and limit: `!trace quota`")
             return
 
         media_external_url, media_url, content_type = await self.extract_media_url(evt, event_id, query)
 
         if media_external_url:
             try:
+                await self.validate_external_url(media_external_url)
                 trace_json = await self.trace_by_external_url(media_external_url)
             except Exception as e:
-                await evt.reply(f"{e}")
+                await evt.reply(f"> {e}")
+                return
+        elif media_url:
+            try:
+                data = await self.get_matrix_media(media_url)
+                trace_json = await self.trace_by_media(data, content_type)
+            except Exception as e:
+                await evt.reply(f"> {e}")
                 return
         else:
-            try:
-                trace_json = await self.trace_by_media(media_url, content_type)
-            except Exception as e:
-                await evt.reply(f"{e}")
-                return
-
-        message = await self.prepare_message(trace_json)
+            await evt.reply("> No media found for analysis.")
+            return
+        msg_data = await self.prepare_message_content(trace_json)
+        message = await self.prepare_message(msg_data)
         if message:
             await evt.reply(message)
         else:
-            await evt.reply("Couldn't find an anime based on the provided screenshot/video.")
+            await evt.reply("> Couldn't find an anime based on the provided screenshot/video.")
 
     async def extract_media_url(self, evt: MessageEvent, event_id: EventID, query: Tuple[str, Any]) -> Tuple[str, str, str]:
         """
@@ -102,7 +100,7 @@ class AnimeTraceBot(Plugin):
             message: MessageEvent = await self.client.get_event(room_id=evt.room_id, event_id=event_id)
             if message.content.msgtype == MessageType.TEXT:
                 media_external_url = re.search(r"(https?://\S+)", message.content.body, re.I)
-                media_external_url = media_external_url.group(1) if media_external_url else None
+                media_external_url = media_external_url.group(1) if media_external_url else ""
             else:
                 media_url = message.content.url
                 content_type = message.content.info.mimetype
@@ -122,7 +120,6 @@ class AnimeTraceBot(Plugin):
         :param media_url: external image URL
         :return: API response
         """
-        await self.validate_external_url(media_url)
         # Send request as a link
         params = {
             "url": media_url
@@ -158,20 +155,27 @@ class AnimeTraceBot(Plugin):
             self.log.error(f"External file type not supported: {content_type}")
             raise Exception(f"External file type not supported: {content_type}")
 
-    async def trace_by_media(self, media_url: str, content_type: str) -> str:
+    async def get_matrix_media(self, media_url: str) -> bytes:
         """
-        Query the API with internal matrix image URL
-        :param media_url: image URL
-        :param content_type: image type
-        :return: API response
+        Download media file from matrix
+        :param media_url: url to download media from
+        :return: media file
+        :raises Exception: if download failed
         """
-        # Download media file from Matrix server first
         try:
-            data = await self.client.download_media(ContentURI(media_url))
+            return await self.client.download_media(ContentURI(media_url))
         except Exception as e:
             self.log.error(f"Media download from Matrix server failed: {e}")
             raise Exception("Media download from Matrix server failed.") from e
 
+    async def trace_by_media(self, data: bytes, content_type: str) -> str:
+        """
+        Query the API with internal matrix image URL
+        :param data: image data
+        :param content_type: image type
+        :return: API response
+        :raises Exception: if request to API failed
+        """
         # Send media file to trace.moe
         headers = self.headers.copy()
         headers["Content-Type"] = content_type
@@ -258,8 +262,8 @@ class AnimeTraceBot(Plugin):
             max_results = self.get_max_results()
             if len(data["result"]) > 1 and max_results > 1:
                 html += (
-                    f"<details>"
-                    f"<br><summary><b>Other results:</b></summary>"
+                    f"<p><details>"
+                    f"<summary><b>Other results:</b></summary>"
                 )
                 body += f"> **Other results:**  \n"
             end = min(max_results, len(data["result"]))
@@ -288,7 +292,7 @@ class AnimeTraceBot(Plugin):
 
             # Footer
             html += (
-                f"</details>"
+                f"</details></p>"
                 f"<p><b><sub>Results from trace.moe</sub></b></p>"
                 f"</blockquote>"
                 f"</div>"
@@ -305,13 +309,12 @@ class AnimeTraceBot(Plugin):
             image_url=image_url
         )
 
-    async def prepare_message(self, data: Any) -> MessageEventContent | None:
+    async def prepare_message(self, msg_data: MessageData) -> MessageEventContent | None:
         """
         Prepares the final message for the user
-        :param data: JSON API response
+        :param msg_data: MessageData object
         :return: message ready to be sent to the user
         """
-        msg_data = await self.prepare_message_content(data)
         content = None
         video = None
         image = None
@@ -319,27 +322,9 @@ class AnimeTraceBot(Plugin):
         video_duration = 0
         image_type = None
         # Download preview data
-        params = {
-            "size": self.get_preview_size()
-        }
         if msg_data.video_url:
-            if self.get_mute():
-                msg_data.video_url += "&mute"
-            try:
-                response = await self.http.get(msg_data.video_url, headers=self.headers, params=params, raise_for_status=True)
-                video_type = response.content_type
-                video_start = float(response.headers.get("x-video-start", 0))
-                video_end = float(response.headers.get("x-video-end", 0))
-                video_duration = int((video_end - video_start) * 1000)
-                video = await response.read()
-            except aiohttp.ClientError as e:
-                self.log.error(f"Error downloading video preview from API: {e}")
-            try:
-                response = await self.http.get(msg_data.image_url, headers=self.headers, params=params, raise_for_status=True)
-                image_type = response.content_type
-                image = await response.read()
-            except aiohttp.ClientError as e:
-                self.log.error(f"Error downloading video thumbnail from API: {e}")
+            video, video_type, video_duration = await self.get_video_preview(msg_data.video_url)
+            image, image_type = await self.get_preview_thumbnail(msg_data.image_url)
 
         # Prepare message content
         if video and image:
@@ -387,7 +372,7 @@ class AnimeTraceBot(Plugin):
                 )
             except Exception as e:
                 self.log.error(f"Error uploading video preview to Matrix server: {e}")
-        elif msg_data.html:
+        if not content and msg_data.html:
             content = TextMessageEventContent(
                 msgtype=MessageType.NOTICE,
                 format=Format.HTML,
@@ -396,39 +381,97 @@ class AnimeTraceBot(Plugin):
             )
         return content
 
+    async def get_video_preview(self, url: str) -> Tuple[bytes, str, int]:
+        """
+        Download video preview
+        :param url: video preview url
+        :return: video preview, video type, video duration
+        """
+        params = {
+            "size": self.get_preview_size()
+        }
+        if self.get_mute():
+            url += "&mute"
+        try:
+            response = await self.http.get(url, headers=self.headers, params=params, raise_for_status=True)
+            video_type = response.content_type
+            video_start = float(response.headers.get("x-video-start", 0))
+            video_end = float(response.headers.get("x-video-end", 0))
+            video_duration = int((video_end - video_start) * 1000)
+            video = await response.read()
+        except aiohttp.ClientError as e:
+            self.log.error(f"Error downloading video preview from API: {e}")
+            return b"", "", 0
+        return video, video_type, video_duration
+
+    async def get_preview_thumbnail(self, url: str) -> Tuple[bytes, str]:
+        """
+        Download preview thumbnail
+        :param url: thumbnail url
+        :return: thumbnail, image type
+        """
+        params = {
+            "size": self.get_preview_size()
+        }
+        try:
+            response = await self.http.get(url, headers=self.headers, params=params, raise_for_status=True)
+            image_type = response.content_type
+            image = await response.read()
+        except aiohttp.ClientError as e:
+            self.log.error(f"Error downloading video thumbnail from API: {e}")
+            return b"", ""
+        return image, image_type
+
     @trace.subcommand("quota", help="Check the search quota and limit")
     async def check_quota(self, evt: MessageEvent) -> None:
         await evt.mark_read()
+        response = await self.get_quota()
+        if not response:
+            await evt.reply("> Connection to trace.moe API failed")
+            return
+        content = await self.prepare_message_quota(response)
+        await evt.reply(content)
+
+    async def get_quota(self) -> Any:
+        """
+        Request quota and limit data from API
+        :return: json response
+        """
         try:
             response = await self.http.get(self.api_me, headers=self.headers, raise_for_status=True)
-            response_json = await response.json()
-            body = (
-                f"> ### trace.moe quota  \n"
-                f"> **Priority:** {response_json['priority']}  \n"
-                f"> **Concurrency:** {response_json['concurrency']}  \n"
-                f"> **Quota:** {response_json['quota']}  \n"
-                f"> **Quota used:** {response_json['quotaUsed']}"
-            )
-            html = (
-                f"<blockquote>"
-                f"<h3>trace.moe quota</h3>"
-                f"<p><b>Priority:</b> {response_json['priority']}"
-                f"<br><b>Concurrency:</b> {response_json['concurrency']}"
-                f"<br><b>Quota:</b> {response_json['quota']}"
-                f"<br><b>Quota used:</b> {response_json['quotaUsed']}"
-                f"</p></blockquote>"
-            )
-
-            content = TextMessageEventContent(
-                msgtype=MessageType.NOTICE,
-                format=Format.HTML,
-                body=body,
-                formatted_body=html
-            )
-            await evt.reply(content)
+            return await response.json()
         except aiohttp.ClientError as e:
             self.log.error(f"Connection to trace.moe API failed: {e}")
-            await evt.reply("Connection to trace.moe API failed")
+            return None
+
+    async def prepare_message_quota(self, response: Any) -> TextMessageEventContent:
+        """
+        Prepare the quota message
+        :param response: json response from API
+        :return: formatted message response
+        """
+        body = (
+            f"> ### trace.moe quota  \n"
+            f"> **Priority:** {response['priority']}  \n"
+            f"> **Concurrency:** {response['concurrency']}  \n"
+            f"> **Quota:** {response['quota']}  \n"
+            f"> **Quota used:** {response['quotaUsed']}"
+        )
+        html = (
+            f"<blockquote>"
+            f"<h3>trace.moe quota</h3>"
+            f"<p><b>Priority:</b> {response['priority']}"
+            f"<br><b>Concurrency:</b> {response['concurrency']}"
+            f"<br><b>Quota:</b> {response['quota']}"
+            f"<br><b>Quota used:</b> {response['quotaUsed']}"
+            f"</p></blockquote>"
+        )
+        return TextMessageEventContent(
+            msgtype=MessageType.NOTICE,
+            format=Format.HTML,
+            body=body,
+            formatted_body=html
+        )
 
     def get_preview_size(self) -> str:
         """
