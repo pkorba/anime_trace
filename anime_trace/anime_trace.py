@@ -151,7 +151,7 @@ class AnimeTraceBot(Plugin):
         if content_length > self.size_limit:
             self.log.error(f"External image size too big: {content_length}")
             raise Exception(f"External image size too big: {content_length} bytes")
-        if not content_type.startswith("image/") and not content_type.startswith("video/"):
+        if not content_type.startswith(("image/", "video/")):
             self.log.error(f"External file type not supported: {content_type}")
             raise Exception(f"External file type not supported: {content_type}")
 
@@ -510,8 +510,7 @@ class AnimeTraceBot(Plugin):
             max_results = 5
         return max_results
 
-    @staticmethod
-    def get_image_dimensions(image: bytes) -> Tuple[int, int]:
+    def get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
         """
         Examine image dimensions
         :param image: image data as bytes
