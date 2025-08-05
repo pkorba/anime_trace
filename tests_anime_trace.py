@@ -3,7 +3,7 @@ import asyncio
 import unittest
 import mautrix.types.event
 from anime_trace.anime_trace import AnimeTraceBot
-from anime_trace.resources.datastructures import MessageData
+from .anime_trace.resources.datastructures import MessageData
 from maubot import MessageEvent
 from maubot.matrix import MaubotMatrixClient
 from mautrix.api import HTTPAPI
@@ -211,7 +211,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
 
         # Assert
         self.assertEqual(data, bytes_data)
-        self.assertEqual(type(data), bytes)
+        self.assertIsInstance(data, bytes)
 
     async def test_get_matrix_media_when_download_fails_then_raise_exception(self):
         # Arrange
@@ -326,7 +326,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         message_data = await self.bot.prepare_message(msg_data)
 
         # Assert
-        self.assertEqual(type(message_data), MediaMessageEventContent)
+        self.assertIsInstance(message_data, MediaMessageEventContent)
         self.assertEqual(message_data.msgtype, MessageType.VIDEO)
         self.assertEqual(message_data.body, msg_data.body)
         self.assertEqual(message_data.format, Format.HTML)
@@ -371,7 +371,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         message_data = await self.bot.prepare_message(msg_data)
 
         # Assert
-        self.assertEqual(type(message_data), MediaMessageEventContent)
+        self.assertIsInstance(message_data, MediaMessageEventContent)
         self.assertEqual(message_data.msgtype, MessageType.VIDEO)
         self.assertEqual(message_data.body, msg_data.body)
         self.assertEqual(message_data.format, Format.HTML)
@@ -404,7 +404,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         message_data = await self.bot.prepare_message(msg_data)
 
         # Assert
-        self.assertEqual(type(message_data), TextMessageEventContent)
+        self.assertIsInstance(message_data, TextMessageEventContent)
         self.assertEqual(message_data.msgtype, MessageType.NOTICE)
         self.assertEqual(message_data.body, msg_data.body)
         self.assertEqual(message_data.format, Format.HTML)
@@ -436,7 +436,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         message_data = await self.bot.prepare_message(msg_data)
 
         # Assert
-        self.assertEqual(type(message_data), TextMessageEventContent)
+        self.assertIsInstance(message_data, TextMessageEventContent)
         self.assertEqual(message_data.msgtype, MessageType.NOTICE)
         self.assertEqual(message_data.body, msg_data.body)
         self.assertEqual(message_data.format, Format.HTML)
@@ -456,7 +456,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         message_data = await self.bot.prepare_message(msg_data)
 
         # Assert
-        self.assertEqual(type(message_data), TextMessageEventContent)
+        self.assertIsInstance(message_data, TextMessageEventContent)
         self.assertEqual(message_data.msgtype, MessageType.NOTICE)
         self.assertEqual(message_data.body, msg_data.body)
         self.assertEqual(message_data.formatted_body, msg_data.html)
@@ -567,7 +567,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         result = await self.bot.prepare_message_quota(data)
 
         # Assert
-        self.assertEqual(type(result), TextMessageEventContent)
+        self.assertIsInstance(result, TextMessageEventContent)
         self.assertEqual(result.msgtype, MessageType.NOTICE)
 
     async def test_get_preview_size(self):
