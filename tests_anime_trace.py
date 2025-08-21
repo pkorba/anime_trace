@@ -151,10 +151,14 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         url = "https://example.com/image.png"
         self.bot.http.get = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "Connection to trace.moe API failed"):
-            # Act
-            await self.bot.trace_by_external_url(url)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, "Connection to trace.moe API failed"):
+                # Act
+                await self.bot.trace_by_external_url(url)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Connection to trace.moe API failed: '], logger.output)
 
     async def test_validate_external_url_when_data_is_correct_then_return_None(self):
         # Arrange
@@ -175,30 +179,42 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         url = "https://example.com/image.png"
         self.bot.http.head = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "Could not validate file from external URL"):
-            # Act
-            await self.bot.validate_external_url(url)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, "Could not validate file from external URL"):
+                # Act
+                await self.bot.validate_external_url(url)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Connection failed during checks of image from external URL: '], logger.output)
 
     async def test_validate_external_url_when_wrong_content_type_then_raise_exception(self):
         # Arrange
         url = "https://example.com/image.png"
         self.bot.http.head = AsyncMock(return_value=await self.create_resp(200, content_type="text/html", content_length=self.bot.size_limit))
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "External file type not supported"):
-            # Act
-            await self.bot.validate_external_url(url)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, ""):
+                # Act
+                await self.bot.validate_external_url(url)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:External file type not supported: text/html'], logger.output)
 
     async def test_validate_external_url_when_wrong_size_then_raise_exception(self):
         # Arrange
         url = "https://example.com/image.png"
         self.bot.http.head = AsyncMock(return_value=await self.create_resp(200, content_type="image/png", content_length=self.bot.size_limit + 1))
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "External image size too big"):
-            # Act
-            await self.bot.validate_external_url(url)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, "External image size too big"):
+                # Act
+                await self.bot.validate_external_url(url)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:External image size too big: 25000001'], logger.output)
 
     async def test_get_matrix_media_when_successful_then_return_byte_data(self):
         # Arrange
@@ -218,10 +234,14 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         url = "mxc://matrix.example.com/image.png"
         self.bot.client.download_media = AsyncMock(side_effect=Exception)
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "Media download from Matrix server failed"):
-            # Act
-            await self.bot.get_matrix_media(url)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, "Media download from Matrix server failed"):
+                # Act
+                await self.bot.get_matrix_media(url)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Media download from Matrix server failed: '], logger.output)
 
     async def test_trace_by_media_when_request_is_successful_then_return_json(self):
         # Arrange
@@ -242,10 +262,14 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         content_type = "image/png"
         self.bot.http.post = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Assert
-        with self.assertRaisesRegex(Exception, "Connection to trace.moe API failed"):
-            # Act
-            await self.bot.trace_by_media(bytes_data, content_type)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Assert
+            with self.assertRaisesRegex(Exception, "Connection to trace.moe API failed"):
+                # Act
+                await self.bot.trace_by_media(bytes_data, content_type)
+
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Connection to trace.moe API failed: '], logger.output)
 
     async def test_prepare_message_content_when_correct_data_provided_then_return_message_data(self):
         # Arrange
@@ -266,14 +290,16 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         }
         self.bot.get_max_results = MagicMock(return_value=5)
 
-        # Act
-        message_data = await self.bot.prepare_message_content(data)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            message_data = await self.bot.prepare_message_content(data)
 
-        # Assert
-        self.assertEqual(message_data.video_url, "")
-        self.assertEqual(message_data.image_url, "")
-        self.assertEqual(message_data.body, "")
-        self.assertEqual(message_data.html, "")
+            # Assert
+            self.assertEqual(['ERROR:testlogger:File not found'], logger.output)
+            self.assertEqual(message_data.video_url, "")
+            self.assertEqual(message_data.image_url, "")
+            self.assertEqual(message_data.body, "")
+            self.assertEqual(message_data.html, "")
 
     async def test_prepare_message_content_when_zero_results_then_return_empty_MessageData(self):
         # Arrange
@@ -367,28 +393,30 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
             image_url="https://example.com/image.png"
         )
 
-        # Act
-        message_data = await self.bot.prepare_message(msg_data)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            message_data = await self.bot.prepare_message(msg_data)
 
-        # Assert
-        self.assertIsInstance(message_data, MediaMessageEventContent)
-        self.assertEqual(message_data.msgtype, MessageType.VIDEO)
-        self.assertEqual(message_data.body, msg_data.body)
-        self.assertEqual(message_data.format, Format.HTML)
-        self.assertEqual(message_data.formatted_body, msg_data.html)
-        self.assertEqual(message_data.external_url, msg_data.video_url)
-        self.assertEqual(message_data.url, "video_url")
-        self.assertEqual(message_data.filename, "anime-preview.mp4")
-        self.assertEqual(message_data.info.mimetype, video_mime)
-        self.assertEqual(message_data.info.size, len(video))
-        self.assertEqual(message_data.info.duration, duration)
-        self.assertEqual(message_data.info.height, 360)
-        self.assertEqual(message_data.info.width, 640)
-        self.assertEqual(message_data.info.thumbnail_url, "image_url")
-        self.assertEqual(message_data.info.thumbnail_info.mimetype, image_mime)
-        self.assertEqual(message_data.info.thumbnail_info.size, len(image))
-        self.assertEqual(message_data.info.thumbnail_info.height, 360)
-        self.assertEqual(message_data.info.thumbnail_info.width, 640)
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Error reading image dimensions: '], logger.output)
+            self.assertIsInstance(message_data, MediaMessageEventContent)
+            self.assertEqual(message_data.msgtype, MessageType.VIDEO)
+            self.assertEqual(message_data.body, msg_data.body)
+            self.assertEqual(message_data.format, Format.HTML)
+            self.assertEqual(message_data.formatted_body, msg_data.html)
+            self.assertEqual(message_data.external_url, msg_data.video_url)
+            self.assertEqual(message_data.url, "video_url")
+            self.assertEqual(message_data.filename, "anime-preview.mp4")
+            self.assertEqual(message_data.info.mimetype, video_mime)
+            self.assertEqual(message_data.info.size, len(video))
+            self.assertEqual(message_data.info.duration, duration)
+            self.assertEqual(message_data.info.height, 360)
+            self.assertEqual(message_data.info.width, 640)
+            self.assertEqual(message_data.info.thumbnail_url, "image_url")
+            self.assertEqual(message_data.info.thumbnail_info.mimetype, image_mime)
+            self.assertEqual(message_data.info.thumbnail_info.size, len(image))
+            self.assertEqual(message_data.info.thumbnail_info.height, 360)
+            self.assertEqual(message_data.info.thumbnail_info.width, 640)
 
     async def test_prepare_message_when_correct_data_but_no_video_then_return_TextMessageEventContent(self):
         # Arrange
@@ -432,15 +460,17 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
             image_url="https://example.com/image.png"
         )
 
-        # Act
-        message_data = await self.bot.prepare_message(msg_data)
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            message_data = await self.bot.prepare_message(msg_data)
 
-        # Assert
-        self.assertIsInstance(message_data, TextMessageEventContent)
-        self.assertEqual(message_data.msgtype, MessageType.NOTICE)
-        self.assertEqual(message_data.body, msg_data.body)
-        self.assertEqual(message_data.format, Format.HTML)
-        self.assertEqual(message_data.formatted_body, msg_data.html)
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Error uploading video preview to Matrix server: '], logger.output)
+            self.assertIsInstance(message_data, TextMessageEventContent)
+            self.assertEqual(message_data.msgtype, MessageType.NOTICE)
+            self.assertEqual(message_data.body, msg_data.body)
+            self.assertEqual(message_data.format, Format.HTML)
+            self.assertEqual(message_data.formatted_body, msg_data.html)
 
     async def test_prepare_message_when_no_video_then_return_TextMessageEventContent(self):
         # Arrange
@@ -499,13 +529,15 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         self.bot.get_mute = MagicMock(return_value=True)
         self.bot.http.get = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Act
-        video, video_type, video_duration = await self.bot.get_video_preview("https://example.com/video.mp4")
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            video, video_type, video_duration = await self.bot.get_video_preview("https://example.com/video.mp4")
 
-        # Assert
-        self.assertEqual(video, b"")
-        self.assertEqual(video_type, "")
-        self.assertEqual(video_duration, 0)
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Error downloading video preview from API: '], logger.output)
+            self.assertEqual(video, b"")
+            self.assertEqual(video_type, "")
+            self.assertEqual(video_duration, 0)
 
     async def test_get_preview_thumbnail_when_success_then_return_valid_data(self):
         # Arrange
@@ -526,12 +558,14 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         self.bot.get_preview_size = MagicMock(return_value="l")
         self.bot.http.get = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Act
-        image, image_type = await self.bot.get_preview_thumbnail("https://example.com/image.png")
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            image, image_type = await self.bot.get_preview_thumbnail("https://example.com/image.png")
 
-        # Assert
-        self.assertEqual(image, b"")
-        self.assertEqual(image_type, "")
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Error downloading video thumbnail from API: '], logger.output)
+            self.assertEqual(image, b"")
+            self.assertEqual(image_type, "")
 
     async def test_get_quota_when_success_then_return_valid_data(self):
         # Arrange
@@ -548,11 +582,13 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
         # Arrange
         self.bot.http.get = AsyncMock(side_effect=aiohttp.ClientError)
 
-        # Act
-        result = await self.bot.get_quota()
+        with self.assertLogs(self.bot.log, level='ERROR') as logger:
+            # Act
+            result = await self.bot.get_quota()
 
-        # Assert
-        self.assertEqual(result, None)
+            # Assert
+            self.assertEqual(['ERROR:testlogger:Connection to trace.moe API failed: '], logger.output)
+            self.assertEqual(result, None)
 
     async def test_prepare_message_quota_return_TextMessageEventContent(self):
         # Arrange
