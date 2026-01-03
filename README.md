@@ -1,6 +1,6 @@
 # Anime Trace Bot
 
-A maubot for Matrix messaging that allows user to trace back the scene from an anime screenshot using [trace.moe](https://trace.moe/) API.
+A maubot plugin that allows user to trace back the scene from an anime screenshot using [trace.moe](https://trace.moe/) API.
 
 ![bot_anime_trace](https://github.com/user-attachments/assets/1159941f-d29a-49f5-a5d4-34ed797d7733)
 
@@ -9,7 +9,7 @@ A maubot for Matrix messaging that allows user to trace back the scene from an a
 Do one of the following:  
 1. Reply to a message containing a screenshot/video or an external link to a screenshot/video with a command `!trace`.  
 2. Send a single message that contains a screenshot/video as an attachment and a command `!trace`.  
-3. Send a single message that contains a link to the screenshot/video and a command `!trace link`.
+3. Send a single message that contains a link to the screenshot/video and a command `!trace <link>`.
 
 If your message contains both an image and a link, then the attachment will be used.  
 In order to check the search quota and limit send a message with a command: `!trace quota`.
