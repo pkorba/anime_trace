@@ -7,12 +7,12 @@ A maubot for Matrix messaging that allows user to trace back the scene from an a
 ## Usage
 
 Do one of the following:  
-1. Reply to a message containing a screenshot/video or an external link to a screenshot/video with a command `[p]trace`.  
-2. Send a single message that contains a screenshot/video as an attachment and a command `[p]trace`.  
-3. Send a single message that contains a link to the screenshot/video and a command `[p]trace link`.
+1. Reply to a message containing a screenshot/video or an external link to a screenshot/video with a command `!trace`.  
+2. Send a single message that contains a screenshot/video as an attachment and a command `!trace`.  
+3. Send a single message that contains a link to the screenshot/video and a command `!trace link`.
 
 If your message contains both an image and a link, then the attachment will be used.  
-In order to check the search quota and limit send a message with a command: `[p]trace quota`.
+In order to check the search quota and limit send a message with a command: `!trace quota`.
 
 ## Configuration
 
