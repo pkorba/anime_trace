@@ -1,18 +1,30 @@
-import aiohttp
 import asyncio
 import io
 import mimetypes
 import re
-from maubot import Plugin, MessageEvent
-from maubot.handlers import command
-from mautrix.types import (MessageType, EventID, ContentURI, TextMessageEventContent, MediaMessageEventContent,
-                           MessageEventContent, Format, VideoInfo, ThumbnailInfo)
-from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
-from PIL import Image
-from .resources.datastructures import MessageData
 from time import gmtime
 from time import strftime
 from typing import Tuple, Any, Type
+
+from aiohttp import ClientError
+from PIL import Image, UnidentifiedImageError
+from mautrix.errors import MatrixResponseError
+from mautrix.types import (
+    MessageType,
+    EventID,
+    ContentURI,
+    TextMessageEventContent,
+    MediaMessageEventContent,
+    MessageEventContent,
+    Format,
+    VideoInfo,
+    ThumbnailInfo
+)
+from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
+from maubot import Plugin, MessageEvent
+from maubot.handlers import command
+
+from .resources.datastructures import MessageData
 
 
 class Config(BaseProxyConfig):
@@ -35,12 +47,13 @@ class AnimeTraceBot(Plugin):
     async def start(self) -> None:
         await super().start()
         self.config.load_and_update()
-        if self.get_cut_borders():
+        if self._get_cut_borders():
             self.api_url += "&cutBorders"
         if self.config.get("api_key", ""):
             self.headers["x-trace-key"] = self.config["api_key"]
 
-    @command.new(name="trace", help="Trace back the scene from an anime screenshot", require_subcommand=False, arg_fallthrough=False,
+    @command.new(name="trace", help="Trace back the scene from an anime screenshot",
+                 require_subcommand=False, arg_fallthrough=False,
                  msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO])
     @command.argument("query", pass_raw=True, required=False, matches=r"(https?://\S+)")
     async def trace(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
@@ -49,55 +62,70 @@ class AnimeTraceBot(Plugin):
         # Get ID of the message user replied to
         event_id = evt.content.get_reply_to()
         if not event_id and not query and evt.content.msgtype == MessageType.TEXT:
-            await evt.reply("> **Usage:**  \n"
-                            "> In reply to the message that contains a screenshot or link to a screenshot: `!trace`  \n"
-                            "> In a message that contains a link to a screenshot: `!trace <link>`  \n"
-                            "> In a message that contains a screenshot as an attachment: `!trace`  \n"
-                            "> To check the search quota and limit: `!trace quota`")
+            help_msg = ("> **Usage:**  \n"
+                        "> In reply to the message that contains a screenshot "
+                        "or link to a screenshot: `!trace`  \n"
+                        "> In a message that contains a link to a screenshot: `!trace <link>`  \n"
+                        "> In a message that contains a screenshot as an attachment: `!trace`  \n"
+                        "> To check the search quota and limit: `!trace quota`")
+            await evt.reply(help_msg)
             return
 
-        media_external_url, media_url, content_type = await self.extract_media_url(evt, event_id, query)
+        media_ext_url, media_url, content_type = await self._extract_media_url(evt, event_id, query)
 
-        if media_external_url:
+        if media_ext_url:
             try:
-                await self.validate_external_url(media_external_url)
-                trace_json = await self.trace_by_external_url(media_external_url)
-            except Exception as e:
+                await self._validate_external_url(media_ext_url)
+                trace_json = await self._trace_by_external_url(media_ext_url)
+            except ValueError as e:
+                await evt.reply(f"> File validation failed - {e}")
+                return
+            except ClientError as e:
                 await evt.reply(f"> {e}")
                 return
         elif media_url:
             try:
-                data = await self.get_matrix_media(media_url)
-                trace_json = await self.trace_by_media(data, content_type)
-            except Exception as e:
+                data = await self._get_matrix_media(media_url)
+                trace_json = await self._trace_by_media(data, content_type)
+            except ClientError as e:
                 await evt.reply(f"> {e}")
                 return
         else:
             await evt.reply("> No media found for analysis.")
             return
-        msg_data = await self.prepare_message_content(trace_json)
-        message = await self.prepare_message(msg_data)
+        msg_data = await self._prepare_message_content(trace_json)
+        message = await self._prepare_message(msg_data)
         if message:
             await evt.reply(message)
         else:
             await evt.reply("> Couldn't find an anime based on the provided screenshot/video.")
 
-    async def extract_media_url(self, evt: MessageEvent, event_id: EventID, query: Tuple[str, Any]) -> Tuple[str, str, str]:
+    async def _extract_media_url(
+            self,
+            evt: MessageEvent,
+            event_id: EventID,
+            query: Tuple[str, Any]
+    ) -> Tuple[str, str, str]:
         """
         Extracts the image from matrix message
         :param evt: user's message
         :param event_id: ID of the message user replied to
         :param query: user's message content
         :return: external image URL if user requested to analyze a link, and two empty strings;
-            empty string, matrix content URL and content type of matrix URL if user requested to analyze an attachment
+        empty string, matrix content URL and content type of matrix URL if user requested
+        to analyze an attachment
         """
         media_external_url = ""
         media_url = ""
         content_type = ""
-        # User requested to analyze the content of the message with the ID obtained in the previous step
+        # User requested to analyze the content of the message
+        # with the ID obtained in the previous step
         if event_id:
             # Get message for analysis
-            message: MessageEvent = await self.client.get_event(room_id=evt.room_id, event_id=event_id)
+            message: MessageEvent = await self.client.get_event(
+                room_id=evt.room_id,
+                event_id=event_id
+            )
             if message.content.msgtype == MessageType.TEXT:
                 media_external_url = re.search(r"(https?://\S+)", message.content.body, re.I)
                 media_external_url = media_external_url.group(1) if media_external_url else ""
@@ -114,7 +142,7 @@ class AnimeTraceBot(Plugin):
                 content_type = evt.content.info.mimetype
         return media_external_url, media_url, content_type
 
-    async def trace_by_external_url(self, media_url: str) -> Any:
+    async def _trace_by_external_url(self, media_url: str) -> Any:
         """
         Query the API with external image URL
         :param media_url: external image URL
@@ -125,37 +153,43 @@ class AnimeTraceBot(Plugin):
             "url": media_url
         }
         try:
-            response = await self.http.get(self.api_url, headers=self.headers, params=params, raise_for_status=True)
+            response = await self.http.get(
+                self.api_url,
+                headers=self.headers,
+                params=params,
+                raise_for_status=True
+            )
             response_json = await response.json()
             return response_json
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Connection to trace.moe API failed: {e}")
-            raise Exception("Connection to trace.moe API failed.") from e
+            raise ClientError("Connection to trace.moe API failed.") from e
 
-    async def validate_external_url(self, media_url: str) -> None:
+    async def _validate_external_url(self, media_url: str) -> None:
         """
         Validate the external image URL. Checks size limit and content type.
         :param media_url: external image URL
-        :raises Exception: if the size of an image is too big or content type is not of image or video types
+        :raises Exception: if the size of an image is too big or content type
+         is not of image or video types
         """
         # Check the headers for size and type
         try:
             response = await self.http.head(media_url, raise_for_status=True)
             content_type = response.content_type
             content_length = response.content_length
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Connection failed during checks of image from external URL: {e}")
-            raise Exception("Could not validate file from external URL") from e
+            raise ClientError(f"Connection to {media_url} failed.") from e
 
         # Verify if content conforms trace.moe requirements
         if content_length > self.size_limit:
             self.log.error(f"External image size too big: {content_length}")
-            raise Exception(f"External image size too big: {content_length} bytes")
+            raise ValueError(f"External image size too big: {content_length} bytes")
         if not content_type.startswith(("image/", "video/")):
             self.log.error(f"External file type not supported: {content_type}")
-            raise Exception(f"External file type not supported: {content_type}")
+            raise ValueError(f"External file type not supported: {content_type}")
 
-    async def get_matrix_media(self, media_url: str) -> bytes:
+    async def _get_matrix_media(self, media_url: str) -> bytes:
         """
         Download media file from matrix
         :param media_url: url to download media from
@@ -164,11 +198,11 @@ class AnimeTraceBot(Plugin):
         """
         try:
             return await self.client.download_media(ContentURI(media_url))
-        except Exception as e:
+        except (ValueError, ClientError) as e:
             self.log.error(f"Media download from Matrix server failed: {e}")
-            raise Exception("Media download from Matrix server failed.") from e
+            raise ClientError("Media download from Matrix server failed.") from e
 
-    async def trace_by_media(self, data: bytes, content_type: str) -> str:
+    async def _trace_by_media(self, data: bytes, content_type: str) -> str:
         """
         Query the API with internal matrix image URL
         :param data: image data
@@ -180,14 +214,147 @@ class AnimeTraceBot(Plugin):
         headers = self.headers.copy()
         headers["Content-Type"] = content_type
         try:
-            response = await self.http.post(self.api_url, data=data, headers=headers, raise_for_status=True)
+            response = await self.http.post(
+                self.api_url,
+                data=data,
+                headers=headers,
+                raise_for_status=True
+            )
             response_json = await response.json()
             return response_json
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Connection to trace.moe API failed: {e}")
-            raise Exception("Connection to trace.moe API failed.") from e
+            raise ClientError("Connection to trace.moe API failed.") from e
 
-    async def prepare_message_content(self, data: Any) -> MessageData:
+    async def _get_link(self, url: str, text: str, is_html: bool = True) -> str:
+        """
+        Return a link as HTML or Markdown
+        :param url: address
+        :param text: displayed text
+        :param is_html: True for HTML, False for Markdown
+        :return: formatted link
+        """
+        if is_html:
+            return f"<a href=\"{url}\">{text}</a>"
+        return f"[{text}]({url})"
+
+    async def _get_titles(
+                self,
+                title_ro: str,
+                title_en: str,
+                al_id: int,
+                is_html: bool = True
+            ) -> str:
+        """
+        Get title section of formatted message
+        :param title_ro: Romaji title
+        :param title_en: English title
+        :param al_id: Anilist ID
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted title section
+        """
+        # HTML
+        url = f"https://anilist.co/anime/{al_id}"
+        result = ""
+        if is_html:
+            result += f"{self._get_link(url, f"<h3>{title_ro}</h3>")}"
+            if title_en:
+                result += f"<blockquote><b>English title:</b> {title_en}</blockquote>"
+            return result
+
+        # Markdown
+        result = f"> ### {self._get_link(url, title_ro, False)}  \n>  \n"
+        if title_en:
+            result += f"> > **English title:** {title_en}  \n>  \n"
+        return result
+
+    async def _get_al_mal_links(self, al_id: int, mal_id: int, is_html: bool = True) -> str:
+        """
+        Return links section of formatted message
+        :param al_id: AniList ID
+        :param mal_id: MyAnimeList ID
+        :param is_html: True for HTML, False for Markdown
+        :return: Links section
+        """
+        al_url = f"https://anilist.co/anime/{al_id}"
+        mal_url = f"https://myanimelist.net/anime/{mal_id}"
+        result = ""
+        if is_html:
+            result += (
+                f"<blockquote>"
+                f"{self._get_link(al_url, "AniList")}, {self._get_link(mal_url, "MyAnimeList")}"
+                f"</blockquote>"
+            )
+            return result
+        result += (
+            f"> > {self._get_link(al_url, "AniList")}, {self._get_link(mal_url, "MyAnimeList")}"
+            "  \n>  \n"
+        )
+        return result
+
+    async def _get_match_data(self, data: Any, is_html: bool = True) -> str:
+        """
+        Get medatada of the main result
+        :param data: raw data
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted metadata for the main result
+        """
+        result = ""
+        episode = data["episode"] if data["episode"] else "-"
+        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
+        tto = strftime("%H:%M:%S", gmtime(data["to"]))
+        if is_html:
+            result += (
+                f"<blockquote><b>Similarity:</b> {(data["similarity"] * 100):.2f}%</blockquote>"
+                f"<blockquote><b>Filename:</b> {data["filename"]}</blockquote>"
+                f"<blockquote><b>Episode:</b> {episode}</blockquote>"
+                f"<blockquote><b>Time :</b> {tfrom} - {tto}</blockquote>"
+            )
+            return result
+        result += (
+            f"> > **Similarity:** {(data["similarity"] * 100):.2f}%  \n>  \n"
+            f"> > **Filename:** {data["filename"]}  \n>  \n"
+            f"> > **Episode:** {episode}  \n>  \n"
+            f"> > **Time:** {tfrom} - {tto}  \n>  \n"
+        )
+        return result
+
+    async def _get_other_result(self, data: Any, number: int, is_html: bool = True) -> str:
+        """
+        Get data for other results
+        :param data: raw data
+        :param number: number of the result
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted data for the given result
+        """
+        result = ""
+        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
+        tto = strftime("%H:%M:%S", gmtime(data["to"]))
+        al_url = f"https://anilist.co/anime/{data["anilist"]["id"]}"
+        mal_url = f"https://myanimelist.net/anime/{data["anilist"]["idMal"]}"
+        title_en = data["anilist"]["title"]["english"]
+        title_ro = data["anilist"]["title"]["romaji"]
+        title = title_en if title_en else title_ro
+        if is_html:
+            result += (
+                f"<blockquote>"
+                f"{number}. {self._get_link(al_url, title)} ({self._get_link(mal_url, "MAL")})"
+                f" <b>S:</b> {(data["similarity"] * 100):.2f}%,"
+                f"{(" <b>Ep:</b> " + str(data["episode"]) + ",") if data["episode"] else ""}"
+                f" <b>T:</b> {tfrom} - {tto}"
+                f"</blockquote>"
+            )
+            return result
+        result += (
+            f"> > {number}."
+            f" {self._get_link(al_url, title, False)} ({self._get_link(mal_url, "MAL", False)})"
+            f" **S:** {(data["similarity"] * 100):.2f}%,"
+            f" {(" **Ep:** " + str(data["episode"]) + ",") if data["episode"] else ""}"
+            f" **T:** {tfrom} - {tto}  \n>  \n"
+        )
+        return result
+
+    async def _prepare_message_content(self, data: Any) -> MessageData:
         """
         Prepare the message content
         :param data: JSON API response
@@ -203,57 +370,50 @@ class AnimeTraceBot(Plugin):
             result = data["result"][0]
             video_url = result["video"]
             image_url = result["image"]
-            tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
-            tto = strftime("%H:%M:%S", gmtime(result["to"]))
+            html += "<blockquote>"
 
-            # Title Romaji
-            html = (
-                f"<div>"
-                f"<blockquote>"
-                f"<a href=\"https://anilist.co/anime/{result["anilist"]["id"]}\">"
-                f"<h3>{result["anilist"]["title"]["romaji"]}</h3>"
-                f"</a>"
+            # Titles
+            html += await self._get_titles(
+                result["anilist"]["title"]["romaji"],
+                result["anilist"]["title"]["english"],
+                result["anilist"]["id"]
             )
-            body = f"> ### [{result["anilist"]["title"]["romaji"]}](https://anilist.co/anime/{result["anilist"]["id"]})  \n>  \n"
-
-            # Title English
-            if result["anilist"]["title"]["english"]:
-                html += f"<blockquote><b>English title:</b> {result["anilist"]["title"]["english"]}</blockquote>"
-                body += f"> > **English title:** {result["anilist"]["title"]["english"]}  \n>  \n"
+            body += await self._get_titles(
+                result["anilist"]["title"]["romaji"],
+                result["anilist"]["title"]["english"],
+                result["anilist"]["id"],
+                False
+            )
 
             # AniList, MyAnimeList links
-            html += (
-                f"<blockquote>"
-                f"<a href=\"https://anilist.co/anime/{result["anilist"]["id"]}\">AniList</a>, "
-                f"<a href=\"https://myanimelist.net/anime/{result["anilist"]["idMal"]}\">MyAnimeList</a>"
-                f"</blockquote>"
+            html += await self._get_al_mal_links(
+                result["anilist"]["id"],
+                result["anilist"]["idMal"]
             )
-            body += (
-                f"> > [AniList](https://anilist.co/anime/{result["anilist"]["id"]}), "
-                f"[MyAnimeList](https://myanimelist.net/anime/{result["anilist"]["idMal"]})  \n>  \n"
+            body += await self._get_al_mal_links(
+                result["anilist"]["id"],
+                result["anilist"]["idMal"],
+                False
             )
 
             # Alternative titles
             if result["anilist"]["synonyms"]:
-                html += f"<blockquote><b>Alternative titles:</b> {", ".join(result["anilist"]["synonyms"])}</blockquote>"
-                body += f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}  \n>  \n"
+                html += (
+                    f"<blockquote>"
+                    f"<b>Alternative titles:</b> {", ".join(result["anilist"]["synonyms"])}"
+                    f"</blockquote>"
+                )
+                body += (
+                    f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}"
+                    f"  \n>  \n"
+                )
 
             # Similarity, filename, episode, time
-            html += (
-                f"<blockquote><b>Similarity:</b> {(result["similarity"] * 100):.2f}%</blockquote>"
-                f"<blockquote><b>Filename:</b> {result["filename"]}</blockquote>"
-                f"<blockquote><b>Episode:</b> {result["episode"] if result["episode"] else "-"}</blockquote>"
-                f"<blockquote><b>Time :</b> {tfrom} - {tto}</blockquote>"
-            )
-            body += (
-                f"> > **Similarity:** {(result["similarity"] * 100):.2f}%  \n>  \n"
-                f"> > **Filename:** {result["filename"]}  \n>  \n"
-                f"> > **Episode:** {result["episode"] if result["episode"] else "-"}  \n>  \n"
-                f"> > **Time:** {tfrom} - {tto}  \n>  \n"
-            )
+            html += await self._get_match_data(result)
+            body += await self._get_match_data(result, False)
 
             # Other results
-            max_results = self.get_max_results()
+            max_results = self._get_max_results()
             if len(data["result"]) > 1 and max_results > 1:
                 html += (
                     "<p><details>"
@@ -262,34 +422,14 @@ class AnimeTraceBot(Plugin):
                 body += "> **Other results:**  \n"
             end = min(max_results, len(data["result"]))
             for i in range(1, end):
-                result = data["result"][i]
-                tfrom = strftime("%H:%M:%S", gmtime(result["from"]))
-                tto = strftime("%H:%M:%S", gmtime(result["to"]))
-                html += (
-                    f"<blockquote>"
-                    f"{i}. <a href=\"https://anilist.co/anime/{result["anilist"]["id"]}\">"
-                    f"{result["anilist"]["title"]["english"] if result["anilist"]["title"]["english"] else result["anilist"]["title"]["romaji"]}</a>"
-                    f" (<a href=\"https://myanimelist.net/anime/{result["anilist"]["idMal"]}\">MAL</a>)"
-                    f" <b>S:</b> {(result["similarity"] * 100):.2f}%,"
-                    f"{(" <b>Ep:</b> " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" <b>T:</b> {tfrom} - {tto}"
-                    f"</blockquote>"
-                )
-                body += (
-                    f"> > {i}. [{result["anilist"]["title"]["english"] if result["anilist"]["title"]["english"] else result["anilist"]["title"]["romaji"]}]"
-                    f"(https://anilist.co/anime/{result["anilist"]["id"]})"
-                    f" ([MAL](https://myanimelist.net/anime/{result["anilist"]["idMal"]}))"
-                    f" **S:** {(result["similarity"] * 100):.2f}%,"
-                    f" {(" **Ep:** " + str(result["episode"]) + ",") if result["episode"] else ""}"
-                    f" **T:** {tfrom} - {tto}  \n>  \n"
-                )
+                html += await self._get_other_result(data["result"][i], i)
+                body += await self._get_other_result(data["result"][i], i, False)
+            html += "</details></p>"
 
             # Footer
             html += (
-                "</details></p>"
                 "<p><b><sub>Results from trace.moe</sub></b></p>"
                 "</blockquote>"
-                "</div>"
             )
             body += "> **Results from trace.moe**"
 
@@ -300,7 +440,7 @@ class AnimeTraceBot(Plugin):
             image_url=image_url
         )
 
-    async def prepare_message(self, msg_data: MessageData) -> MessageEventContent | None:
+    async def _prepare_message(self, msg_data: MessageData) -> MessageEventContent | None:
         """
         Prepares the final message for the user
         :param msg_data: MessageData object
@@ -314,17 +454,16 @@ class AnimeTraceBot(Plugin):
         image_type = None
         # Download preview data
         if msg_data.video_url:
-            video, video_type, video_duration = await self.get_video_preview(msg_data.video_url)
-            image, image_type = await self.get_preview_thumbnail(msg_data.image_url)
+            video, video_type, video_duration = await self._get_video_preview(msg_data.video_url)
+            image, image_type = await self._get_preview_thumbnail(msg_data.image_url)
 
         # Prepare message content
         if video and image:
-            width = 640
-            height = 360
-            try:
-                width, height = await asyncio.get_event_loop().run_in_executor(None, self.get_image_dimensions, image)
-            except Exception as e:
-                self.log.error(f"Error reading image dimensions: {e}")
+            width, height = await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._get_image_dimensions,
+                image
+            )
             try:
                 video_extension = mimetypes.guess_extension(video_type)
                 image_extension = mimetypes.guess_extension(image_type)
@@ -361,7 +500,7 @@ class AnimeTraceBot(Plugin):
                         )
                     )
                 )
-            except Exception as e:
+            except (ValueError, MatrixResponseError) as e:
                 self.log.error(f"Error uploading video preview to Matrix server: {e}")
         if not content and msg_data.html:
             content = TextMessageEventContent(
@@ -372,43 +511,53 @@ class AnimeTraceBot(Plugin):
             )
         return content
 
-    async def get_video_preview(self, url: str) -> Tuple[bytes, str, int]:
+    async def _get_video_preview(self, url: str) -> Tuple[bytes, str, int]:
         """
         Download video preview
         :param url: video preview url
         :return: video preview, video type, video duration
         """
         params = {
-            "size": self.get_preview_size()
+            "size": self._get_preview_size()
         }
-        if self.get_mute():
+        if self._get_mute():
             url += "&mute"
         try:
-            response = await self.http.get(url, headers=self.headers, params=params, raise_for_status=True)
+            response = await self.http.get(
+                url,
+                headers=self.headers,
+                params=params,
+                raise_for_status=True
+            )
             video_type = response.content_type
             video_start = float(response.headers.get("x-video-start", 0))
             video_end = float(response.headers.get("x-video-end", 0))
             video_duration = int((video_end - video_start) * 1000)
             video = await response.read()
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Error downloading video preview from API: {e}")
             return b"", "", 0
         return video, video_type, video_duration
 
-    async def get_preview_thumbnail(self, url: str) -> Tuple[bytes, str]:
+    async def _get_preview_thumbnail(self, url: str) -> Tuple[bytes, str]:
         """
         Download preview thumbnail
         :param url: thumbnail url
         :return: thumbnail, image type
         """
         params = {
-            "size": self.get_preview_size()
+            "size": self._get_preview_size()
         }
         try:
-            response = await self.http.get(url, headers=self.headers, params=params, raise_for_status=True)
+            response = await self.http.get(
+                url,
+                headers=self.headers,
+                params=params,
+                raise_for_status=True
+            )
             image_type = response.content_type
             image = await response.read()
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Error downloading video thumbnail from API: {e}")
             return b"", ""
         return image, image_type
@@ -420,7 +569,7 @@ class AnimeTraceBot(Plugin):
         if not response:
             await evt.reply("> Connection to trace.moe API failed")
             return
-        content = await self.prepare_message_quota(response)
+        content = await self._prepare_message_quota(response)
         await evt.reply(content)
 
     async def get_quota(self) -> Any:
@@ -431,11 +580,11 @@ class AnimeTraceBot(Plugin):
         try:
             response = await self.http.get(self.api_me, headers=self.headers, raise_for_status=True)
             return await response.json()
-        except aiohttp.ClientError as e:
+        except ClientError as e:
             self.log.error(f"Connection to trace.moe API failed: {e}")
             return None
 
-    async def prepare_message_quota(self, response: Any) -> TextMessageEventContent:
+    async def _prepare_message_quota(self, response: Any) -> TextMessageEventContent:
         """
         Prepare the quota message
         :param response: json response from API
@@ -464,7 +613,7 @@ class AnimeTraceBot(Plugin):
             formatted_body=html
         )
 
-    def get_preview_size(self) -> str:
+    def _get_preview_size(self) -> str:
         """
         Get the preview size of the image from configuration
         :return: preview size parameter
@@ -475,7 +624,7 @@ class AnimeTraceBot(Plugin):
             return size
         return "m"
 
-    def get_mute(self) -> bool:
+    def _get_mute(self) -> bool:
         """
         Get the mute status of preview video from configuration
         :return: mute status
@@ -486,7 +635,7 @@ class AnimeTraceBot(Plugin):
         }
         return base_mute.get(self.config.get("mute", "no"), base_mute["no"])
 
-    def get_cut_borders(self) -> bool:
+    def _get_cut_borders(self) -> bool:
         """
         Get information from configuration whether to cut borders of image sent to API
         :return: cut borders status
@@ -497,7 +646,7 @@ class AnimeTraceBot(Plugin):
         }
         return base_cut_borders.get(self.config.get("cut_borders", "yes"), base_cut_borders["yes"])
 
-    def get_max_results(self) -> int:
+    def _get_max_results(self) -> int:
         """
         Get the maximum number of results from configuration
         :return: maximum results number
@@ -510,14 +659,19 @@ class AnimeTraceBot(Plugin):
             max_results = 5
         return max_results
 
-    def get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
+    def _get_image_dimensions(self, image: bytes) -> Tuple[int, int]:
         """
         Examine image dimensions
         :param image: image data as bytes
         :return: Tuple with image width and height
         """
-        img = Image.open(io.BytesIO(image))
-        return img.width, img.height
+        try:
+            img = Image.open(io.BytesIO(image))
+            return img.width, img.height
+        except (ValueError, TypeError, FileNotFoundError, UnidentifiedImageError) as e:
+            self.log.error(f"Error reading image dimensions: {e}")
+            # Return the default image dimensions for large previews
+            return 640, 360
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
