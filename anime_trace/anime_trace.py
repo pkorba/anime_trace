@@ -424,11 +424,11 @@ class AnimeTraceBot(Plugin):
                     "<summary><b>Other results:</b></summary>"
                 )
                 body += "> **Other results:**  \n"
-            end = min(max_results, len(data["result"]))
-            for i in range(1, end):
-                html += await self._get_other_result(data["result"][i], i)
-                body += await self._get_other_result(data["result"][i], i, False)
-            html += "</details></p>"
+                end = min(max_results, len(data["result"]))
+                for i in range(1, end):
+                    html += await self._get_other_result(data["result"][i], i)
+                    body += await self._get_other_result(data["result"][i], i, False)
+                html += "</details></p>"
 
             # Footer
             html += (
@@ -569,14 +569,14 @@ class AnimeTraceBot(Plugin):
     @trace.subcommand("quota", help="Check the search quota and limit")
     async def check_quota(self, evt: MessageEvent) -> None:
         await evt.mark_read()
-        response = await self.get_quota()
+        response = await self._get_quota()
         if not response:
             await evt.reply("> Connection to trace.moe API failed")
             return
         content = await self._prepare_message_quota(response)
         await evt.reply(content)
 
-    async def get_quota(self) -> Any:
+    async def _get_quota(self) -> Any:
         """
         Request quota and limit data from API
         :return: json response
