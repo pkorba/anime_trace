@@ -257,13 +257,13 @@ class AnimeTraceBot(Plugin):
         url = f"https://anilist.co/anime/{al_id}"
         result = ""
         if is_html:
-            result += f"{self._get_link(url, f"<h3>{title_ro}</h3>")}"
+            result += f"{await self._get_link(url, f"<h3>{title_ro}</h3>")}"
             if title_en:
                 result += f"<blockquote><b>English title:</b> {title_en}</blockquote>"
             return result
 
         # Markdown
-        result = f"> ### {self._get_link(url, title_ro, False)}  \n>  \n"
+        result = f"> ### {await self._get_link(url, title_ro, False)}  \n>  \n"
         if title_en:
             result += f"> > **English title:** {title_en}  \n>  \n"
         return result
@@ -282,12 +282,14 @@ class AnimeTraceBot(Plugin):
         if is_html:
             result += (
                 f"<blockquote>"
-                f"{self._get_link(al_url, "AniList")}, {self._get_link(mal_url, "MyAnimeList")}"
+                f"{await self._get_link(al_url, "AniList")}, "
+                f"{await self._get_link(mal_url, "MyAnimeList")}"
                 f"</blockquote>"
             )
             return result
         result += (
-            f"> > {self._get_link(al_url, "AniList")}, {self._get_link(mal_url, "MyAnimeList")}"
+            f"> > {await self._get_link(al_url, "AniList", False)}, "
+            f"{await self._get_link(mal_url, "MyAnimeList", False)}"
             "  \n>  \n"
         )
         return result
@@ -338,7 +340,8 @@ class AnimeTraceBot(Plugin):
         if is_html:
             result += (
                 f"<blockquote>"
-                f"{number}. {self._get_link(al_url, title)} ({self._get_link(mal_url, "MAL")})"
+                f"{number}. {await self._get_link(al_url, title)}"
+                f" ({await self._get_link(mal_url, "MAL")})"
                 f" <b>S:</b> {(data["similarity"] * 100):.2f}%,"
                 f"{(" <b>Ep:</b> " + str(data["episode"]) + ",") if data["episode"] else ""}"
                 f" <b>T:</b> {tfrom} - {tto}"
@@ -347,7 +350,8 @@ class AnimeTraceBot(Plugin):
             return result
         result += (
             f"> > {number}."
-            f" {self._get_link(al_url, title, False)} ({self._get_link(mal_url, "MAL", False)})"
+            f" {await self._get_link(al_url, title, False)}"
+            f" ({await self._get_link(mal_url, "MAL", False)})"
             f" **S:** {(data["similarity"] * 100):.2f}%,"
             f" {(" **Ep:** " + str(data["episode"]) + ",") if data["episode"] else ""}"
             f" **T:** {tfrom} - {tto}  \n>  \n"
