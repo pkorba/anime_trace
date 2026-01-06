@@ -1,6 +1,6 @@
 maubot: 0.1.0
 id: com.github.pkorba.anime_trace
-version: 1.2.3
+version: 1.2.4
 license: MIT
 modules:
   - anime_trace
