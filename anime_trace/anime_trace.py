@@ -52,9 +52,13 @@ class AnimeTraceBot(Plugin):
         if self.config.get("api_key", ""):
             self.headers["x-trace-key"] = self.config["api_key"]
 
-    @command.new(name="trace", help="Trace back the scene from an anime screenshot",
-                 require_subcommand=False, arg_fallthrough=False,
-                 msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO])
+    @command.new(
+        name="trace",
+        help="Trace back the scene from an anime screenshot",
+        require_subcommand=False,
+        arg_fallthrough=False,
+        msgtypes=[MessageType.TEXT, MessageType.IMAGE, MessageType.VIDEO]
+    )
     @command.argument("query", pass_raw=True, required=False, matches=r"(https?://\S+)")
     async def trace(self, evt: MessageEvent, query: Tuple[str, Any]) -> None:
         await evt.mark_read()
@@ -101,10 +105,10 @@ class AnimeTraceBot(Plugin):
             await evt.reply("> Couldn't find an anime based on the provided screenshot/video.")
 
     async def _extract_media_url(
-            self,
-            evt: MessageEvent,
-            event_id: EventID,
-            query: Tuple[str, Any]
+        self,
+        evt: MessageEvent,
+        event_id: EventID,
+        query: Tuple[str, Any]
     ) -> Tuple[str, str, str]:
         """
         Extracts the image from matrix message
@@ -226,138 +230,6 @@ class AnimeTraceBot(Plugin):
             self.log.error(f"Connection to trace.moe API failed: {e}")
             raise ClientError("Connection to trace.moe API failed.") from e
 
-    async def _get_link(self, url: str, text: str, is_html: bool = True) -> str:
-        """
-        Return a link as HTML or Markdown
-        :param url: address
-        :param text: displayed text
-        :param is_html: True for HTML, False for Markdown
-        :return: formatted link
-        """
-        if is_html:
-            return f"<a href=\"{url}\">{text}</a>"
-        return f"[{text}]({url})"
-
-    async def _get_titles(
-                self,
-                title_ro: str,
-                title_en: str,
-                al_id: int,
-                is_html: bool = True
-            ) -> str:
-        """
-        Get title section of formatted message
-        :param title_ro: Romaji title
-        :param title_en: English title
-        :param al_id: Anilist ID
-        :param is_html: True for HTML, False for Markdown
-        :return: Formatted title section
-        """
-        # HTML
-        url = f"https://anilist.co/anime/{al_id}"
-        result = ""
-        if is_html:
-            result += f"{await self._get_link(url, f"<h3>{title_ro}</h3>")}"
-            if title_en:
-                result += f"<blockquote><b>English title:</b> {title_en}</blockquote>"
-            return result
-
-        # Markdown
-        result = f"> ### {await self._get_link(url, title_ro, False)}  \n>  \n"
-        if title_en:
-            result += f"> > **English title:** {title_en}  \n>  \n"
-        return result
-
-    async def _get_al_mal_links(self, al_id: int, mal_id: int, is_html: bool = True) -> str:
-        """
-        Return links section of formatted message
-        :param al_id: AniList ID
-        :param mal_id: MyAnimeList ID
-        :param is_html: True for HTML, False for Markdown
-        :return: Links section
-        """
-        al_url = f"https://anilist.co/anime/{al_id}"
-        mal_url = f"https://myanimelist.net/anime/{mal_id}"
-        result = ""
-        if is_html:
-            result += (
-                f"<blockquote>"
-                f"{await self._get_link(al_url, "AniList")}, "
-                f"{await self._get_link(mal_url, "MyAnimeList")}"
-                f"</blockquote>"
-            )
-            return result
-        result += (
-            f"> > {await self._get_link(al_url, "AniList", False)}, "
-            f"{await self._get_link(mal_url, "MyAnimeList", False)}"
-            "  \n>  \n"
-        )
-        return result
-
-    async def _get_match_data(self, data: Any, is_html: bool = True) -> str:
-        """
-        Get medatada of the main result
-        :param data: raw data
-        :param is_html: True for HTML, False for Markdown
-        :return: Formatted metadata for the main result
-        """
-        result = ""
-        episode = data["episode"] if data["episode"] else "-"
-        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
-        tto = strftime("%H:%M:%S", gmtime(data["to"]))
-        if is_html:
-            result += (
-                f"<blockquote><b>Similarity:</b> {(data["similarity"] * 100):.2f}%</blockquote>"
-                f"<blockquote><b>Filename:</b> {data["filename"]}</blockquote>"
-                f"<blockquote><b>Episode:</b> {episode}</blockquote>"
-                f"<blockquote><b>Time :</b> {tfrom} - {tto}</blockquote>"
-            )
-            return result
-        result += (
-            f"> > **Similarity:** {(data["similarity"] * 100):.2f}%  \n>  \n"
-            f"> > **Filename:** {data["filename"]}  \n>  \n"
-            f"> > **Episode:** {episode}  \n>  \n"
-            f"> > **Time:** {tfrom} - {tto}  \n>  \n"
-        )
-        return result
-
-    async def _get_other_result(self, data: Any, number: int, is_html: bool = True) -> str:
-        """
-        Get data for other results
-        :param data: raw data
-        :param number: number of the result
-        :param is_html: True for HTML, False for Markdown
-        :return: Formatted data for the given result
-        """
-        result = ""
-        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
-        tto = strftime("%H:%M:%S", gmtime(data["to"]))
-        al_url = f"https://anilist.co/anime/{data["anilist"]["id"]}"
-        mal_url = f"https://myanimelist.net/anime/{data["anilist"]["idMal"]}"
-        title_en = data["anilist"]["title"]["english"]
-        title_ro = data["anilist"]["title"]["romaji"]
-        title = title_en if title_en else title_ro
-        if is_html:
-            result += (
-                f"<blockquote>"
-                f"{number}. {await self._get_link(al_url, title)}"
-                f" ({await self._get_link(mal_url, "MAL")})"
-                f" <b>S:</b> {(data["similarity"] * 100):.2f}%,"
-                f"{(" <b>Ep:</b> " + str(data["episode"]) + ",") if data["episode"] else ""}"
-                f" <b>T:</b> {tfrom} - {tto}"
-                f"</blockquote>"
-            )
-            return result
-        result += (
-            f"> > {number}."
-            f" {await self._get_link(al_url, title, False)}"
-            f" ({await self._get_link(mal_url, "MAL", False)})"
-            f" **S:** {(data["similarity"] * 100):.2f}%,"
-            f" {(" **Ep:** " + str(data["episode"]) + ",") if data["episode"] else ""}"
-            f" **T:** {tfrom} - {tto}  \n>  \n"
-        )
-        return result
-
     async def _prepare_message_content(self, data: Any) -> MessageData:
         """
         Prepare the message content
@@ -401,16 +273,8 @@ class AnimeTraceBot(Plugin):
             )
 
             # Alternative titles
-            if result["anilist"]["synonyms"]:
-                html += (
-                    f"<blockquote>"
-                    f"<b>Alternative titles:</b> {", ".join(result["anilist"]["synonyms"])}"
-                    f"</blockquote>"
-                )
-                body += (
-                    f"> > **Alternative titles:** {", ".join(result["anilist"]["synonyms"])}"
-                    f"  \n>  \n"
-                )
+            html += await self._get_alternative_titles(result["anilist"]["synonyms"])
+            body += await self._get_alternative_titles(result["anilist"]["synonyms"], False)
 
             # Similarity, filename, episode, time
             html += await self._get_match_data(result)
@@ -443,6 +307,187 @@ class AnimeTraceBot(Plugin):
             video_url=video_url,
             image_url=image_url
         )
+
+    async def _get_link(self, url: str, text: str, is_html: bool = True) -> str:
+        """
+        Return a link as HTML or Markdown
+        :param url: address
+        :param text: displayed text
+        :param is_html: True for HTML, False for Markdown
+        :return: formatted link
+        """
+        # HTML
+        if is_html:
+            return f"<a href=\"{url}\">{text}</a>"
+
+        # Markdown
+        return f"[{text}]({url})"
+
+    async def _get_titles(
+        self,
+        title_ro: str,
+        title_en: str,
+        al_id: int,
+        is_html: bool = True
+    ) -> str:
+        """
+        Get title section of formatted message
+        :param title_ro: Romaji title
+        :param title_en: English title
+        :param al_id: Anilist ID
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted title section
+        """
+
+        url = f"https://anilist.co/anime/{al_id}"
+        result = ""
+
+        # HTML
+        if is_html:
+            result += f"{await self._get_link(url, f"<h3>{title_ro}</h3>")}"
+            if title_en:
+                result += f"<blockquote><b>English title:</b> {title_en}</blockquote>"
+            return result
+
+        # Markdown
+        result = f"> ### {await self._get_link(url, title_ro, False)}  \n>  \n"
+        if title_en:
+            result += f"> > **English title:** {title_en}  \n>  \n"
+        return result
+
+    async def _get_al_mal_links(self, al_id: int, mal_id: int, is_html: bool = True) -> str:
+        """
+        Return links section of formatted message
+        :param al_id: AniList ID
+        :param mal_id: MyAnimeList ID
+        :param is_html: True for HTML, False for Markdown
+        :return: Links section
+        """
+        if not mal_id:
+            return ""
+
+        al_url = f"https://anilist.co/anime/{al_id}"
+        mal_url = f"https://myanimelist.net/anime/{mal_id}"
+        result = ""
+
+        # HTML
+        if is_html:
+            result += (
+                f"<blockquote>"
+                f"{await self._get_link(al_url, "AniList")}, "
+                f"{await self._get_link(mal_url, "MyAnimeList")}"
+                f"</blockquote>"
+            )
+            return result
+
+        # Markdown
+        result += (
+            f"> > {await self._get_link(al_url, "AniList", False)}, "
+            f"{await self._get_link(mal_url, "MyAnimeList", False)}"
+            "  \n>  \n"
+        )
+        return result
+
+    async def _get_alternative_titles(self, synonyms: list[str], is_html: bool = True) -> str:
+        """
+        Get alternative titles
+        :param synonyms: list of synonyms
+        :param is_html: True for HTML, False for Markdown
+        :return: formatted alternative titles
+        """
+        if not synonyms:
+            return ""
+
+        # HTML
+        if is_html:
+            return (
+                f"<blockquote>"
+                f"<b>Alternative titles:</b> {", ".join(synonyms)}"
+                f"</blockquote>"
+            )
+
+        # Markdown
+        return f"> > **Alternative titles:** {", ".join(synonyms)}  \n>  \n"
+
+    async def _get_match_data(self, data: Any, is_html: bool = True) -> str:
+        """
+        Get medatada of the main result
+        :param data: raw data
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted metadata for the main result
+        """
+        result = ""
+        episode = data["episode"] if data["episode"] else "-"
+        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
+        tto = strftime("%H:%M:%S", gmtime(data["to"]))
+
+        # HTML
+        if is_html:
+            result += (
+                f"<blockquote><b>Similarity:</b> {(data["similarity"] * 100):.2f}%</blockquote>"
+                f"<blockquote><b>Filename:</b> {data["filename"]}</blockquote>"
+                f"<blockquote><b>Episode:</b> {episode}</blockquote>"
+                f"<blockquote><b>Time:</b> {tfrom} - {tto}</blockquote>"
+            )
+            return result
+
+        # Markdown
+        result += (
+            f"> > **Similarity:** {(data["similarity"] * 100):.2f}%  \n>  \n"
+            f"> > **Filename:** {data["filename"]}  \n>  \n"
+            f"> > **Episode:** {episode}  \n>  \n"
+            f"> > **Time:** {tfrom} - {tto}  \n>  \n"
+        )
+        return result
+
+    async def _get_other_result(self, data: Any, number: int, is_html: bool = True) -> str:
+        """
+        Get data for other results
+        :param data: raw data
+        :param number: number of the result
+        :param is_html: True for HTML, False for Markdown
+        :return: Formatted data for the given result
+        """
+        result = ""
+        tfrom = strftime("%H:%M:%S", gmtime(data["from"]))
+        tto = strftime("%H:%M:%S", gmtime(data["to"]))
+        al_url = f"https://anilist.co/anime/{data["anilist"]["id"]}"
+        mal_url = ""
+        if data["anilist"]["idMal"]:
+            mal_url = f"https://myanimelist.net/anime/{data["anilist"]["idMal"]}"
+        title_en = data["anilist"]["title"]["english"]
+        title_ro = data["anilist"]["title"]["romaji"]
+        title = title_en if title_en else title_ro
+
+        # HTML
+        if is_html:
+            result += (
+                f"<blockquote>"
+                f"{number}. {await self._get_link(al_url, title)}"
+            )
+            if mal_url:
+                result += f" ({await self._get_link(mal_url, "MAL")})"
+            result += (
+                f" <b>S:</b> {(data["similarity"] * 100):.2f}%,"
+                f"{(" <b>Ep:</b> " + str(data["episode"]) + ",") if data["episode"] else ""}"
+                f" <b>T:</b> {tfrom} - {tto}"
+                f"</blockquote>"
+            )
+            return result
+
+        # Markdown
+        result += (
+            f"> > {number}."
+            f" {await self._get_link(al_url, title, False)}"
+        )
+        if mal_url:
+            result += f" ({await self._get_link(mal_url, "MAL", False)})"
+        result += (
+            f" **S:** {(data["similarity"] * 100):.2f}%,"
+            f"{(" **Ep:** " + str(data["episode"]) + ",") if data["episode"] else ""}"
+            f" **T:** {tfrom} - {tto}  \n>  \n"
+        )
+        return result
 
     async def _prepare_message(self, msg_data: MessageData) -> MessageEventContent | None:
         """
