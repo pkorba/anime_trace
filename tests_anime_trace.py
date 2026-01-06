@@ -1190,5 +1190,6 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
                 logger.output
             )
 
+
 if __name__ == '__main__':
     unittest.main()
