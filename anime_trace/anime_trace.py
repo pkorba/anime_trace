@@ -373,10 +373,10 @@ class AnimeTraceBot(Plugin):
         # HTML
         if is_html:
             result += (
-                f"<blockquote>"
+                "<blockquote>"
                 f"{await self._get_link(al_url, "AniList")}, "
                 f"{await self._get_link(mal_url, "MyAnimeList")}"
-                f"</blockquote>"
+                "</blockquote>"
             )
             return result
 
@@ -401,9 +401,9 @@ class AnimeTraceBot(Plugin):
         # HTML
         if is_html:
             return (
-                f"<blockquote>"
+                "<blockquote>"
                 f"<b>Alternative titles:</b> {", ".join(synonyms)}"
-                f"</blockquote>"
+                "</blockquote>"
             )
 
         # Markdown
@@ -462,7 +462,7 @@ class AnimeTraceBot(Plugin):
         # HTML
         if is_html:
             result += (
-                f"<blockquote>"
+                "<blockquote>"
                 f"{number}. {await self._get_link(al_url, title)}"
             )
             if mal_url:
@@ -471,7 +471,7 @@ class AnimeTraceBot(Plugin):
                 f" <b>S:</b> {(data["similarity"] * 100):.2f}%,"
                 f"{(" <b>Ep:</b> " + str(data["episode"]) + ",") if data["episode"] else ""}"
                 f" <b>T:</b> {tfrom} - {tto}"
-                f"</blockquote>"
+                "</blockquote>"
             )
             return result
 
@@ -640,20 +640,20 @@ class AnimeTraceBot(Plugin):
         :return: formatted message response
         """
         body = (
-            f"> ### trace.moe quota  \n"
+            "> ### trace.moe quota  \n"
             f"> **Priority:** {response['priority']}  \n"
             f"> **Concurrency:** {response['concurrency']}  \n"
             f"> **Quota:** {response['quota']}  \n"
             f"> **Quota used:** {response['quotaUsed']}"
         )
         html = (
-            f"<blockquote>"
-            f"<h3>trace.moe quota</h3>"
+            "<blockquote>"
+            "<h3>trace.moe quota</h3>"
             f"<p><b>Priority:</b> {response['priority']}"
             f"<br><b>Concurrency:</b> {response['concurrency']}"
             f"<br><b>Quota:</b> {response['quota']}"
             f"<br><b>Quota used:</b> {response['quotaUsed']}"
-            f"</p></blockquote>"
+            "</p></blockquote>"
         )
         return TextMessageEventContent(
             msgtype=MessageType.NOTICE,

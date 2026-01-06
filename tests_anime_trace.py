@@ -515,7 +515,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
                 "<blockquote>"
                 f"<a href=\"{al_url}\">AniList</a>, "
                 f"<a href=\"{mal_url}\">MyAnimeList</a>"
-                f"</blockquote>",
+                "</blockquote>",
                 al_id,
                 mal_id,
                 True
@@ -534,7 +534,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
                 False
             ),
             (
-                f"",
+                "",
                 al_id,
                 None,
                 False
