@@ -1,4 +1,3 @@
-import asyncio
 import io
 import mimetypes
 import re
@@ -41,7 +40,7 @@ class AnimeTraceBot(Plugin):
     api_url = "https://api.trace.moe/search?anilistInfo"
     api_me = "https://api.trace.moe/me"
     headers = {
-        "User-Agent": "AnimeTraceBot/1.2.4"
+        "User-Agent": "AnimeTraceBot/1.2.5"
     }
 
     async def start(self) -> None:
@@ -66,12 +65,14 @@ class AnimeTraceBot(Plugin):
         # Get ID of the message user replied to
         event_id = evt.content.get_reply_to()
         if not event_id and not query and evt.content.msgtype == MessageType.TEXT:
-            help_msg = ("> **Usage:**  \n"
-                        "> In reply to the message that contains a screenshot "
-                        "or link to a screenshot: `!trace`  \n"
-                        "> In a message that contains a link to a screenshot: `!trace <link>`  \n"
-                        "> In a message that contains a screenshot as an attachment: `!trace`  \n"
-                        "> To check the search quota and limit: `!trace quota`")
+            help_msg = (
+                "> **Usage:**  \n"
+                "> In reply to the message that contains a screenshot or link to a screenshot: "
+                "`!trace`  \n"
+                "> In a message that contains a link to a screenshot: `!trace <link>`  \n"
+                "> In a message that contains a screenshot as an attachment: `!trace`  \n"
+                "> To check the search quota and limit: `!trace quota`"
+            )
             await evt.reply(help_msg)
             return
 
@@ -177,8 +178,9 @@ class AnimeTraceBot(Plugin):
          is not of image or video types
         """
         # Check the headers for size and type
+        headers = {"User-Agent": "WhatsApp/2"}
         try:
-            response = await self.http.head(media_url, raise_for_status=True)
+            response = await self.http.head(media_url, headers=headers, raise_for_status=True)
             content_type = response.content_type
             content_length = response.content_length
         except ClientError as e:
@@ -508,7 +510,7 @@ class AnimeTraceBot(Plugin):
 
         # Prepare message content
         if video and image:
-            width, height = await asyncio.get_event_loop().run_in_executor(
+            width, height = await self.loop.run_in_executor(
                 None,
                 self._get_image_dimensions,
                 image
