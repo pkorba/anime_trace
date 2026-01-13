@@ -234,7 +234,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
                 logger.output
             )
 
-    async def test_validate_external_url_when_data_is_correct_then_return_None(self):
+    async def test_validate_external_url_when_content_type_is_correct_then_return_None(self):
         # Arrange
         url = "https://example.com/image.png"
         content_types = ["image/png", "video/mp4"]
@@ -245,6 +245,26 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
                         200,
                         content_type=content_type,
                         content_length=self.bot.size_limit
+                    )
+                )
+
+                # Act
+                result = await self.bot._validate_external_url(url)
+
+                # Assert
+                self.assertEqual(result, None)
+
+    async def test_validate_external_url_when_content_length_is_correct_then_return_None(self):
+        # Arrange
+        url = "https://example.com/image.png"
+        content_lengths = [self.bot.size_limit, None]
+        for content_length in content_lengths:
+            with self.subTest(content_length=content_length):
+                self.bot.http.head = AsyncMock(
+                    return_value=await self.create_resp(
+                        200,
+                        content_type="image/png",
+                        content_length=content_length
                     )
                 )
 
@@ -274,25 +294,27 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
     async def test_validate_external_url_when_wrong_content_type_then_raise_exception(self):
         # Arrange
         url = "https://example.com/image.png"
-        self.bot.http.head = AsyncMock(
-            return_value=await self.create_resp(
-                200,
-                content_type="text/html",
-                content_length=self.bot.size_limit
-            )
-        )
+        content_types = [("text/html", "text/html"), (None, "unknown")]
+        for content_type in content_types:
+            with self.subTest(content_type=content_type):
+                self.bot.http.head = AsyncMock(
+                    return_value=await self.create_resp(
+                        200,
+                        content_type=content_type[0],
+                        content_length=self.bot.size_limit
+                    )
+                )
+                with self.assertLogs(self.bot.log, level='ERROR') as logger:
+                    # Assert
+                    with self.assertRaisesRegex(ValueError, ""):
+                        # Act
+                        await self.bot._validate_external_url(url)
 
-        with self.assertLogs(self.bot.log, level='ERROR') as logger:
-            # Assert
-            with self.assertRaisesRegex(ValueError, ""):
-                # Act
-                await self.bot._validate_external_url(url)
-
-            # Assert
-            self.assertEqual(
-                ['ERROR:testlogger:External file type not supported: text/html'],
-                logger.output
-            )
+                    # Assert
+                    self.assertEqual(
+                        [f'ERROR:testlogger:External file type not supported: {content_type[1]}'],
+                        logger.output
+                    )
 
     async def test_validate_external_url_when_wrong_size_then_raise_exception(self):
         # Arrange
@@ -313,7 +335,7 @@ class TestAnimeTraceBot(unittest.IsolatedAsyncioTestCase):
 
             # Assert
             self.assertEqual(
-                ['ERROR:testlogger:External image size too big: 25000001'],
+                ['ERROR:testlogger:External image size too big: 25 000 001'],
                 logger.output
             )
 
