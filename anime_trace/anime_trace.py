@@ -180,20 +180,24 @@ class AnimeTraceBot(Plugin):
         # Check the headers for size and type
         headers = {"User-Agent": "WhatsApp/2"}
         try:
-            response = await self.http.head(media_url, headers=headers, raise_for_status=True)
-            content_type = response.content_type
-            content_length = response.content_length
+            res = await self.http.head(media_url, headers=headers, raise_for_status=True)
+            content_type = res.content_type if res.content_type is not None else "unknown"
+            content_length = res.content_length if res.content_length is not None else 0
         except ClientError as e:
             self.log.error(f"Connection failed during checks of image from external URL: {e}")
             raise ClientError(f"Connection to {media_url} failed.") from e
 
         # Verify if content conforms trace.moe requirements
-        if content_length > self.size_limit:
-            self.log.error(f"External image size too big: {content_length}")
-            raise ValueError(f"External image size too big: {content_length} bytes")
         if not content_type.startswith(("image/", "video/")):
             self.log.error(f"External file type not supported: {content_type}")
             raise ValueError(f"External file type not supported: {content_type}")
+        if content_length > self.size_limit:
+            formatted_length = f"{content_length:,}".replace(",", " ")
+            formatted_limit = f"{self.size_limit:,}".replace(",", " ")
+            self.log.error(f"External image size too big: {formatted_length}")
+            raise ValueError(
+                f"External image size too big: {formatted_length} bytes (max {formatted_limit})"
+            )
 
     async def _get_matrix_media(self, media_url: str) -> bytes:
         """
